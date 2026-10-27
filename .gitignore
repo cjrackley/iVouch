@@ -1,0 +1,80 @@
+# iVouch .gitignore
+# Weights, datasets and secrets never go in git (see DEVELOPMENT_PLAN §8.3 and agents/builder.md).
+# Model weights and datasets are tracked by checksum in registry/ and stored outside git.
+
+# ---- Secrets and credentials ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+service-account*.json
+*credentials*.json
+local.properties
+
+# ---- Data and model artifacts ----
+data/
+*.pt
+*.pth
+*.pte
+*.onnx
+*.safetensors
+*.ckpt
+*.bin
+*.npy
+*.npz
+*.parquet
+minio-data/
+pgdata/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ---- Android ----
+.gradle/
+android/**/build/
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+
+# ---- iOS ----
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.ipa
+*.dSYM.zip
+.swiftpm/xcode/
+
+# ---- Web tests ----
+node_modules/
+playwright-report/
+test-results/
+
+# ---- Runtime logs (spec logs in logs/*.md ARE committed) ----
+*.log
+
+# ---- OS and editors ----
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
