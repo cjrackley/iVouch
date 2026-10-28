@@ -71,6 +71,9 @@ test-results/
 # ---- Runtime logs (spec logs in logs/*.md ARE committed) ----
 *.log
 
+# ---- Agent working state (checkpoints are resumable local state, never committed) ----
+work/
+
 # ---- OS and editors ----
 .DS_Store
 Thumbs.db

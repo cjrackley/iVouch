@@ -1,13 +1,67 @@
-# The one model and effort every iVouch agent runs on (orchestrator and builders).
-# Muse Code sub-agents inherit the session's model, so there are no per-brief models or tiers.
-# Model IDs are public names, not secrets. API keys go in .env (ignored by git), never here.
-# Changing anything in this file is a user decision; log the date of any change.
+# Model and effort for iVouch agents.
+#
+# How Muse actually dispatches sub-agents (verified against the tool
+# surface in this repository's sessions):
+#
+# - Native sub-agents (muse.subagent_spawn) have NO model/effort parameter.
+#   They inherit the session model and effort. No file can change that.
+#   The call is muse.subagent_spawn(command_id, role, objective, ...);
+#   the brief YAML is pasted into `objective` (see AGENTS.md §3).
+# - Workflow child agents (muse.workflow -> host.agent({model, effort}))
+#   DO accept per-call model and effort overrides. That is the only path
+#   where per-builder models exist, and the only dispatch that may set
+#   one. Procedure: agents/orchestrator.md §2.
+#
+# Default for this project: every builder inherits, dispatched natively.
+# A brief uses workflow dispatch only when its brief type has a non-null
+# tier below AND `tiers_verified` is true.
 
-model_id: muse-spark-1.3
-# The ID Muse Code reports at runtime in Contributor mode (user decision, 2026-10-27).
-# Logs and commits record this runtime ID.
-runtime_model_id: muse-spark-1.3-contributor
-effort: high
+dispatch:
+  default: native          # native | workflow
+  max_concurrent_builders: 1   # builders run one at a time on the shared
+                               # tree; enforced by the orchestrator's
+                               # roster, never assumed from spawn behaviour
 
-# Muse Code does not queue sub-agents; the orchestrator enforces this limit itself.
-max_concurrent_builders: 3
+session:
+  # What the user launches the orchestrator session with is the user's
+  # choice at launch time. No Muse tool reports the session model or
+  # effort back to an agent, so agents record `unobserved` and never stop
+  # work over it. Do not put a model name here expecting an agent to
+  # verify it; a configured name that no tool can confirm is decoration.
+  model_id: null
+  effort: null
+
+tiers_verified: false      # set to true only by the user, after the
+                           # verification test below has been run and its
+                           # outcome logged in logs/spec0_log.md
+
+builders:
+  # Per-brief-type model/effort, used ONLY for workflow dispatch, only
+  # when tiers_verified is true. null = inherit (dispatch natively
+  # instead). Never put a guessed model alias here: a non-null model
+  # must be an exact model ID the user took from Muse's own
+  # session/model catalogue. Assign a stronger model to `implement` and
+  # a cheaper/faster one to `tests`/`eval` only when the user has
+  # supplied real IDs for both.
+  tests:        { model: null, effort: null }
+  implement:    { model: null, effort: null }
+  eval:         { model: null, effort: null }
+
+# Changing anything in this file is a user decision (orchestrator.md §9).
+# Log the date of any change here:
+# - 2026-10-28: native/workflow distinction added; tiers experimental.
+# - 2026-10-28: builders serialised (max_concurrent_builders 3 -> 1);
+#   session model no longer prescribed (unobservable); tiers gated on
+#   tiers_verified.
+#
+# Verification test for workflow tiers (run once, log the outcome):
+#   One muse.workflow run, two children, same non-trivial prompt.
+#   Child A: model/effort omitted. Child B: explicit model ID taken from
+#   Muse's own session/model catalogue (never a guessed alias).
+#   Evidence: configured-model fields in child session records if present,
+#   plus repeated blind capability/latency probes. Model self-reports are
+#   NOT evidence. If only identical runtime IDs are observable, record
+#   "inconclusive", leave tiers_verified false, and keep builders on
+#   inherit. Only the user sets tiers_verified true. This test is exempt
+#   from the one-builder-per-workflow-run rule in orchestrator.md §2:
+#   it is a capability probe, not a builder brief.

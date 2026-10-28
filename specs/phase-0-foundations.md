@@ -1,19 +1,35 @@
 # Phase 0 — Foundations and Contracts
 
-**Why this is its own phase:** Every later phase (Python ML, FastAPI server, Kotlin app, Swift app, web console) must agree on the same schemas, taxonomy, thresholds, preprocessing and repo conventions. Freezing these first lets later phases run in parallel without agents negotiating with each other or waiting on the user.
+**Why separate:** every later phase (Python ML, FastAPI server, Kotlin
+Android app, web console) must agree on the same schemas, taxonomy,
+thresholds, preprocessing and repo conventions. Freezing these first
+lets later phases be built one at a time without renegotiating them.
 
 | | |
 |---|---|
 | Depends on | nothing |
 | Unblocks | all phases |
-| Parallel with | — |
+| Execution | Sequential only — Block 0, phase 1 of 2 (runs first; Phase 1 follows automatically in the same block) |
 | Stack | Python 3.12, uv, ruff, mypy, pytest, Docker Compose (PostgreSQL 16 + PostGIS + pgvector, MinIO) |
 
 ## Human inputs (gate)
 
 - None required to start.
-- Docker Desktop running on the Windows machine, needed for `python tasks.py up`. If it's missing, the services criteria in 0.1 are blocked; everything else proceeds.
-- **Review later (non-blocking):** the content policy, terms and removal-request notice drafts (objective 0.4), and the minimum age (default 18). Agents proceed with the drafts marked `DRAFT`.
+- Docker Desktop running, needed for `python tasks.py up`. If missing,
+  services criteria in 0.1 are **ENV-BLOCKED** (orchestrator §7);
+  everything else proceeds.
+- **Review later (non-blocking):** content policy, terms and
+  removal-request drafts (0.4), minimum age (default 18). Drafts are
+  marked `DRAFT`.
+
+## Agent dispatch note
+
+Phase 0 uses the **bootstrap exception** (orchestrator §5): briefs that
+create `contracts/**`, `config/**`, CI files, `tasks.py`, the 0.4 policy
+documents, the 0.7 `docs/` files, or the 0.7 `logs/specN_log.md` files
+list them in `allowed_paths` (logs via `new_files`, never overwriting a
+log that has entries); they are not locked for those briefs. From
+Phase 1 on they are locked normally.
 
 ## Objectives
 
@@ -24,51 +40,89 @@ Create the monorepo:
 ```text
 iVouch/
   DEVELOPMENT_PLAN.md
-  AGENTS.md               # agent entry point: roles + shared guardrails (locked for builders)
-  agents/                 # orchestrator.md, builder.md, models.yaml (locked for builders)
-  logs/                   # specN_log.md, append-only
-  specs/                  # phase specs (this folder)
+  AGENTS.md               # roles + guardrails + Muse tool mapping (locked)
+  agents/                 # orchestrator.md, builder.md, models.yaml (locked)
+  logs/                   # specN_log.md, append-only, END-OF-LOG sentinel
+  specs/                  # phase specs
   contracts/              # openapi.yaml, schemas/, examples/, preprocessing.md
   config/                 # taxonomy.yaml, thresholds.yaml, policy.yaml, label_maps/
-  common/ivcommon/        # shared Python: config loaders, schema models, metrics
-  ml/ivml/                # data pipeline, training, export, eval (Phases 1–3)
-  server/ivserver/        # FastAPI app, worker, authenticity (Phases 4–5, 8)
+  common/ivcommon/        # shared Python: config loaders, schemas, metrics
+  ml/ivml/                # data, training, export, eval (Phases 1-3)
+  server/ivserver/        # FastAPI app, worker, authenticity (Phases 4, 5, 7)
   android/                # Kotlin app (Phase 6)
-  ios/                    # Swift app (Phase 7)
   eval/                   # harness + reports/
   registry/               # datasets.yaml, models.yaml
-  fixtures/               # small synthetic test images (generated, safe to commit)
-  infra/                  # docker-compose.yml, CI
-  docs/                   # CONTENT_POLICY.md, TERMS.md, REMOVAL_REQUESTS.md, decisions/, HUMAN_INPUTS.md, BLOCKED.md
+  fixtures/               # small synthetic test images (safe to commit)
+  infra/                  # docker-compose.yml, Dockerfiles
+  .github/workflows/      # CI
+  pyproject.toml + uv.lock  # Python workspace root covering common/ml/server/eval
+  work/checkpoints/       # resumable long-job checkpoints (ignored by git)
+  docs/                   # CONTENT_POLICY.md, TERMS.md, REMOVAL_REQUESTS.md,
+                          # decisions/, HUMAN_INPUTS.md, BLOCKED.md
 ```
 
-Task runner: `tasks.py` at the repo root, Python standard library only, with targets `python tasks.py setup`, `python tasks.py check` (ruff + mypy + pytest across Python packages), `python tasks.py up` / `down` (Docker services), `python tasks.py fixtures`. It must work in Windows PowerShell (the development machine) and on the Linux CI runner. No bash scripts or Makefiles.
+Data and model artifacts live outside git: datasets under `data/`,
+artifacts under `ARTIFACT_ROOT` (default `data/artifacts/`). Both are
+git-ignored; `registry/*.yaml` records their versions and sha256 so any
+session can find and verify them.
+
+Task runner: `tasks.py`, Python standard library only, targets:
+
+- `python tasks.py setup`
+- `python tasks.py check` — ruff + mypy + pytest across Python packages.
+- `python tasks.py up` / `down` — Docker services.
+- `python tasks.py fixtures`
+- `python tasks.py env-check --names HF_TOKEN ...` — prints only
+  `present`/`missing` per name. This is the **only** way agents may
+  check credentials; nobody reads `.env` directly.
+
+All targets work in Windows PowerShell and on the Linux CI runner. No
+bash scripts or Makefiles. The runner creates `work/checkpoints/` and
+prints `ARTIFACT_ROOT` on `setup`. `setup` installs pinned dev
+dependencies (uv or pip from the committed lock/requirements) so `check`
+passes on a clean clone.
 
 **Acceptance criteria**
-- [ ] `python tasks.py setup` then `python tasks.py check` passes on a clean clone, on Windows and in CI.
-- [ ] `python tasks.py up` starts PostgreSQL (with `postgis` and `vector` extensions available) and MinIO; a healthcheck script exits 0.
-- [ ] CI workflow (`infra/ci/` or `.github/workflows/`) runs `python tasks.py check` on push.
-- [ ] `.gitignore` excludes `data/`, model weights, `.env`; `.env.example` lists every env var used.
+
+- [ ] `python tasks.py setup` then `python tasks.py check` passes on a
+  clean clone on Windows. (CI confirms the same on Linux whenever the
+  user pushes; CI is recorded, not gating — orchestrator §6.)
+- [ ] `python tasks.py up` starts PostgreSQL (with `postgis` and
+  `vector` extensions) and MinIO; a healthcheck script exits 0. If
+  Docker is absent this box is ENV-BLOCKED, not failed. No stock image
+  ships both extensions; the brief may add `infra/Dockerfile.postgres`
+  (or a chosen third-party image, license recorded) with a decision
+  record. Container-registry hosts go in the brief's `network_allowed`.
+- [ ] CI workflow runs `python tasks.py check` on push.
+- [ ] `.gitignore` excludes `data/`, `work/`, model weights, `.env`;
+  `.env.example` lists every env var used, including `ARTIFACT_ROOT`,
+  `ENV`, `ORIGINALS_KEY`, `QUARANTINE_KEY`.
+- [ ] `env-check` prints no secret values (test greps its output).
 
 ### 0.2 API and data contracts
 
-Write `contracts/openapi.yaml` for the v1 endpoints (see DEVELOPMENT_PLAN §7) and JSON Schemas in `contracts/schemas/`:
+Write `contracts/openapi.yaml` for the v1 endpoints
+(DEVELOPMENT_PLAN §7) and JSON Schemas in `contracts/schemas/`:
 
 | Schema | Purpose |
 |---|---|
-| `account` | `account_id`, `email`, `email_verified`, `roles` (`user` \| `reviewer` \| `safety_officer` \| `admin`), `status` (`active` \| `suspended` \| `deleted`), `policy_version_accepted`, `age_confirmed_at`, `created_at` (no date of birth) |
-| `auth_tokens` | `access_token` (JWT, short-lived), `refresh_token`, `expires_in` |
-| `capture_metadata` | `captured_at`, `capture_source` (`in_app_camera` \| `gallery` \| `web_upload`), `device_model`, `os_version`, `app_version`, `install_id` (device identity for attestation; the account comes from the auth token) |
+| `account` | `account_id`, `email`, `email_verified`, `roles` (`user` \| `reviewer` \| `safety_officer` \| `admin`), `status`, `policy_version_accepted`, `age_confirmed_at`, `created_at` (no date of birth) |
+| `auth_tokens` | `access_token` (JWT), `refresh_token`, `expires_in` |
+| `capture_metadata` | `captured_at`, `capture_source` (`in_app_camera` \| `gallery` \| `web_upload`), `device_model`, `os_version`, `app_version`, `install_id` (the account comes from the auth token) |
 | `location` | `lat`, `lng`, `accuracy_m`, `source` (`exif-gps` \| `device-gps` \| `manual-pin` \| `claim-text` \| `none`), `consented` |
-| `device_result` | on-device outputs + `model_version` (incident probs, severity probs, policy scores per category, boxes, mask area fraction, rationale) |
-| `takedown_request` | requester name + email, electronic signature (typed full name + timestamp), content locator (report URL/id or description), good-faith statement (bool, required), status, `received_at`, `deadline_at` (= received + 48 h) |
-| `authenticity_signals` / `authenticity_result` | see Phase 5 |
+| `device_result` | on-device outputs + `model_version` (incident/severity/policy scores, boxes, mask fraction, rationale) |
+| `takedown_request` | requester name + email, electronic signature, content locator, good-faith statement (required), status, `received_at`, `deadline_at` (= received + 48 h) |
+| `authenticity_signals` / `authenticity_result` | shapes defined here; values and fusion rules are Phase 5 |
 | `report` | full report as returned by `GET /v1/reports/{id}` |
 | `incident_feature` | GeoJSON feature for `GET /v1/incidents` |
 
-Every schema has a `schema_version` field. Mirror the schemas as Pydantic v2 models in `ivcommon.schemas`.
+Every schema has a `schema_version` field. Mirror the schemas as
+Pydantic v2 models in `ivcommon.schemas`. Contracts stay
+platform-neutral (nothing Android-specific) so a future client needs no
+contract break.
 
 **Functions**
+
 ```python
 # common/ivcommon/schemas.py
 class Account(BaseModel): ...
@@ -79,21 +133,33 @@ class Location(BaseModel): ...
 class DeviceResult(BaseModel): ...
 class AuthenticityResult(BaseModel): ...
 class Report(BaseModel): ...
-def validate_against_schema(payload: dict, schema_name: str) -> None: ...  # raises on failure
+def validate_against_schema(payload: dict, schema_name: str) -> None: ...
 ```
 
 **Acceptance criteria**
+
 - [ ] `openapi.yaml` passes `openapi-spec-validator`.
-- [ ] Each schema has ≥ 1 valid and ≥ 1 invalid example in `contracts/examples/`; a pytest test validates all of them.
+- [ ] Each schema has ≥ 1 valid and ≥ 1 invalid example in
+  `contracts/examples/`; a pytest test validates all of them.
 - [ ] Pydantic models round-trip every valid example with no field loss.
 
 ### 0.3 Shared configuration
 
-- `config/taxonomy.yaml`: incident ids `car_crash`, `fire`, `flood`, `storm_damage`, `earthquake_damage`, `none`; display names; severity levels `minor`, `moderate`, `severe`.
-- `config/thresholds.yaml`: every numeric threshold in the system, each with a comment naming the phase that calibrates it (`# CALIBRATE: Phase 2`).
-- `config/policy.yaml`: policy version, terms version, `min_age` (default 18; must be ≥ 13), categories (`violence_gore`, `nudity_sexual`), user-facing message per category, repeat-violation suspension count.
+- `config/taxonomy.yaml`: incident ids `car_crash`, `fire`, `flood`,
+  `storm_damage`, `earthquake_damage`, `none`; severity levels
+  `minor`, `moderate`, `severe`.
+- `config/thresholds.yaml`: every **calibrated** numeric threshold,
+  each with a comment naming the phase that calibrates it
+  (`# CALIBRATE: Phase 2`). Only briefs naming those keys may set them.
+- `config/policy.yaml`: policy/terms versions, `min_age` (default 18,
+  ≥ 13), categories (`violence_gore`, `nudity_sexual`), user-facing
+  message per category, repeat-violation suspension count, and fixed
+  protocol constants (token lifetimes, upload size limit, takedown
+  deadline hours, account-deletion window days) so code references
+  constants instead of re-typing numbers.
 
 **Functions**
+
 ```python
 # common/ivcommon/config.py
 def load_taxonomy(path: Path | None = None) -> Taxonomy: ...
@@ -102,34 +168,39 @@ def load_policy(path: Path | None = None) -> Policy: ...
 ```
 
 **Acceptance criteria**
-- [ ] Loaders validate files and fail with a clear message on unknown keys or missing values.
+
+- [ ] Loaders validate files and fail with a clear message on unknown
+  keys or missing values.
 - [ ] Unit tests cover each loader.
 
-### 0.4 Content policy, terms and removal-request notice (user-facing)
+### 0.4 Content policy, terms and removal-request notice
 
-Write three plain-language documents, each marked `DRAFT` until the user approves it:
+Write three plain-language documents, each marked `DRAFT` until the
+user approves:
 
-`docs/CONTENT_POLICY.md`
-- **Not allowed:** anything showing real violence (fights, assaults, shootings, weapons being used against people or animals); gore (blood, wounds, injured or dead people or animals); nudity or sexual content of any kind.
-- **Illegal content:** content that sexually exploits children is illegal and is reported to the National Center for Missing & Exploited Children (NCMEC).
-- **Guidance:** photograph the scene, vehicles, buildings, water, fire or debris, not injured people. "Not for emergencies: call your local emergency number first."
-- What happens on violation: the app blocks the upload and explains why; the server re-checks and discards violating images; repeated violations suspend the account.
+- `docs/CONTENT_POLICY.md` — not allowed: real violence, gore, nudity
+  or sexual content of any kind; illegal content (sexual exploitation
+  of children) is reported to NCMEC; guidance to photograph scenes not
+  injured people; "Not for emergencies: call your local emergency
+  number first."; what happens on violation.
+- `docs/TERMS.md` — accounts required, minimum age, one person per
+  account, account deletion and legal-hold exceptions.
+- `docs/REMOVAL_REQUESTS.md` — how anyone (no account) can request
+  removal of an intimate image shared without consent, the 48-hour
+  commitment, and that identical copies are removed too.
 
-`docs/TERMS.md`
-- Accounts required; minimum age (`min_age`); one person per account; account deletion and what is kept under legal obligations.
-
-`docs/REMOVAL_REQUESTS.md` (TAKE IT DOWN Act notice)
-- How anyone (no account needed) can request removal of an intimate image shared without consent: what to include (name, contact, signature, where the content is, good-faith statement), the 48-hour removal commitment, and that identical copies are removed too.
-
-Serve all three via `GET /v1/policy` (Phase 4) and bundle copies in each app as an offline fallback.
+Serve all three via `GET /v1/policy` (Phase 4) and bundle copies in the
+Android app as an offline fallback.
 
 **Acceptance criteria**
-- [ ] Each document and `config/policy.yaml` share the same version strings; a test checks they match.
-- [ ] `REMOVAL_REQUESTS.md` lists every field required by the `takedown_request` schema.
+
+- [ ] Each document and `config/policy.yaml` share the same version
+  strings; a test checks they match.
+- [ ] `REMOVAL_REQUESTS.md` lists every field required by the
+  `takedown_request` schema.
 
 ### 0.5 Evaluation harness
 
-**Functions**
 ```python
 # common/ivcommon/metrics.py
 def macro_f1(y_true, y_pred, labels) -> float: ...
@@ -140,7 +211,7 @@ def mask_iou(pred: np.ndarray, gt: np.ndarray) -> float: ...
 def recall_at_k(ranked_ids: list[list[str]], relevant: list[set[str]], k: int) -> float: ...
 def roc_auc(scores, y_true) -> float: ...
 def false_accusation_rate(labels_pred: list[str], truly_real: list[bool]) -> float: ...
-def latency_percentiles(samples_ms: list[float]) -> dict[str, float]: ...  # p50, p95, p99
+def latency_percentiles(samples_ms: list[float]) -> dict[str, float]: ...
 
 # eval/run.py
 def run_eval(task: str, model_version: str, dataset_version: str) -> EvalReport: ...
@@ -148,76 +219,112 @@ def run_eval(task: str, model_version: str, dataset_version: str) -> EvalReport:
 ```
 
 **Acceptance criteria**
+
 - [ ] Each metric has a unit test with a hand-computed expected value.
 - [ ] `python -m eval.run --task dummy` writes both report files.
 
 ### 0.6 Dataset and model registries
 
-`registry/datasets.yaml` and `registry/models.yaml`: name, version, source URL, **license**, intended use (`research` / `commercial-approved`), sha256 of artifacts, storage path, created_at, parent versions. Weights and data live outside git (local path or MinIO bucket).
+`registry/datasets.yaml` and `registry/models.yaml`: name, version,
+source URL, **license**, intended use (`research` /
+`commercial-approved`), sha256, storage path (under `data/` or
+`ARTIFACT_ROOT`), created_at, parent versions.
 
-**Functions**
 ```python
 # common/ivcommon/registry.py
 def register_dataset(name: str, version: str, path: Path, license: str, source: str, parents: list[str] = []) -> None: ...
 def register_model(name: str, version: str, artifacts: dict[str, Path], dataset_version: str, embedding_version: str | None, license: str) -> None: ...
-def resolve(name: str, version: str = "latest") -> RegistryEntry: ...
+def resolve(name: str, version: str = "latest") -> RegistryEntry: ...  # verifies sha256, errors clearly if artifact missing
 ```
 
 **Acceptance criteria**
+
 - [ ] Registering refuses entries with an empty `license`.
-- [ ] Checksums are verified on `resolve`.
+- [ ] Checksums verified on `resolve`; a missing artifact produces an
+  ENV-BLOCKED-style error naming the expected path, not a stack trace.
 
 ### 0.7 Agent working conventions
 
 Create:
-- `docs/decisions/0000-template.md`: lightweight decision record (context, options, decision, reversibility). Agents record reversible decisions here instead of stopping to ask, except the user-only decisions in `agents/orchestrator.md` §9 (e.g. lowering any target).
-- `docs/HUMAN_INPUTS.md`: checklist of every external input from DEVELOPMENT_PLAN §8.2 with status (`pending` / `provided` / `waived`).
-- `docs/BLOCKED.md`: where an agent records anything it could not finish because a human input is missing, plus the mock it used instead.
+
+- `docs/decisions/0000-template.md` — decision record template.
+  Agents record reversible decisions here instead of stopping, except
+  orchestrator §9 user-only decisions.
+- `docs/HUMAN_INPUTS.md` — every external input from
+  DEVELOPMENT_PLAN §8.1 with status (`pending`/`provided`/`waived`).
+- `docs/BLOCKED.md` — anything unfinished for a missing human input,
+  the mock used, and any SAFETY-STOP file paths (path only).
+- Each `logs/specN_log.md` (N = 0–8) created empty except its title and
+  a final `<!-- END-OF-LOG -->` sentinel line (orchestrator §6.2). The
+  orchestrator creates `spec0_log.md` itself at phase start, before any
+  brief runs (orchestrator §1 step 0); this objective creates the rest
+  and must not overwrite a log that already has entries — an existing
+  file with only its sentinel is left as is. The brief lists the missing
+  logs in `new_files`.
 
 **Acceptance criteria**
-- [ ] All three files exist and `HUMAN_INPUTS.md` lists every gate from every phase spec.
+
+- [ ] All files exist; `HUMAN_INPUTS.md` lists every gate from every
+  phase spec; every spec log ends with the sentinel.
 
 ### 0.8 Synthetic fixtures
 
-`python tasks.py fixtures` generates small synthetic images with Pillow (solid scenes, text, simple shapes) and variants: no EXIF, EXIF with GPS, rotated EXIF orientation, re-encoded JPEG at quality 50, HEIC copy, PNG. These are for unit tests only (not model quality).
+`python tasks.py fixtures` generates small synthetic images with Pillow
+(solid scenes, text, simple shapes) and variants: no EXIF, EXIF with
+GPS, rotated EXIF orientation, re-encoded JPEG quality 50, HEIC copy,
+PNG. Unit tests only.
 
 **Acceptance criteria**
-- [ ] Fixtures are deterministic (same bytes for the same seed).
-- [ ] Fixtures are safe to commit (< 5 MB total).
+
+- [ ] Fixtures deterministic (same bytes for same seed), < 5 MB total,
+  safe to commit.
 
 ### 0.9 CSAM hash-matching interface
 
-Shared by Phase 1 (screening policy data before ingest) and Phase 4 (screening every upload). Real providers are implemented in Phase 4.
+Shared by Phase 1 (screening policy data) and Phase 4 (screening every
+upload). Real providers are implemented in Phase 4.
 
-**Functions**
 ```python
 # common/ivcommon/hashmatch.py
 class HashMatchResult(BaseModel):
     matched: bool
     provider: str
-    match_id: str | None      # provider reference, never the hash list itself
+    match_id: str | None
 class HashMatcher(Protocol):
     def check(self, image_bytes: bytes) -> HashMatchResult: ...
-class MockHashMatcher:        # "matches" only images whose sha256 is listed in a test config of benign fixtures
-    ...
-def get_hash_matcher() -> HashMatcher: ...  # from env; MockHashMatcher allowed only when ENV in {dev, test}
+class MockHashMatcher: ...  # matches only sha256s in a test config of benign fixtures
+def get_hash_matcher() -> HashMatcher: ...  # Mock allowed only when ENV in {dev, test}
 ```
 
 **Acceptance criteria**
-- [ ] `get_hash_matcher()` raises at startup if `ENV` is not `dev`/`test` and no real provider is configured (test).
+
+- [ ] `get_hash_matcher()` raises at startup if `ENV` is not
+  `dev`/`test` and no real provider is configured (test).
 - [ ] Mock match list contains only Phase 0 synthetic fixtures.
 
 ## Agent notes
 
-- Contracts are the source of truth. A later phase that needs a contract change must update the schema, bump `schema_version`, update examples, and record a decision.
-- Never commit secrets. All secrets come from env vars listed in `.env.example`.
-- Keep `thresholds.yaml` as the only place numbers live. No magic numbers in code.
-- Never collect, download, generate or open material that could be CSAM, in this or any phase (DEVELOPMENT_PLAN §8.3).
+- Contracts are the source of truth. A later phase needing a contract
+  change updates the schema, bumps `schema_version`, updates examples,
+  and records a decision. Breaking changes need the user (orchestrator
+  §9).
+- Never commit secrets. Secrets come from env vars in `.env.example`,
+  checked only via `tasks.py env-check`.
+- Calibrated numbers live in `thresholds.yaml`; protocol constants in
+  `policy.yaml`/contracts. No other magic numbers in code.
+- Never collect, download, generate or open material that could be
+  CSAM (DEVELOPMENT_PLAN §8.2).
 
 ## Out of scope
 
-Any model training, endpoints beyond stubs, mobile code.
+Any model training, endpoints beyond stubs, Android code.
 
 ## Definition of done
 
-All acceptance boxes checked, `python tasks.py check` green on Windows and in CI, `docs/HUMAN_INPUTS.md` complete.
+Every acceptance criterion recorded as passing in `logs/spec0_log.md`
+(the boxes above are spec source text and are never ticked; see
+`logs/README.md`), `python tasks.py check` green on Windows,
+`docs/HUMAN_INPUTS.md` complete. A criterion that cannot run — Docker
+absent for the services box, for example — is ENV-BLOCKED, logged in
+`BLOCKED.md`, and keeps the phase open under orchestrator §7. There is
+no partial completion.
