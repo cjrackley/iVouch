@@ -1,0 +1,36 @@
+# iVouch Lite configuration — all thresholds live here (spec 0.2).
+# No threshold may be re-typed as a literal outside lite/app/config.py's
+# loader; code reads these values only via the loader. Thresholds are
+# uncalibrated demo values (spec 1); prompt text is demo-grade and may be
+# edited here as a config change recorded in the log.
+max_upload_bytes: 10485760
+allowed_types:
+  - jpeg
+  - png
+clip_model_id: openai/clip-vit-base-patch32
+clip_device: cuda
+incident_prompts:
+  car_crash: a photo of a car crash
+  fire: a photo of a fire
+  flood: a photo of a flood
+  storm_damage: a photo of storm damage
+  earthquake_damage: a photo of earthquake damage
+  none: a photo with no incident
+severity_prompts:
+  minor: a photo showing minor damage
+  moderate: a photo showing moderate damage
+  severe: a photo showing severe damage
+low_confidence_below: 0.5
+claim_mismatch_below: 0.2
+phash_max_distance: 8
+duplicate_window: 30
+policy_mock_hashes_path: lite/tests/fixtures/mock_hashes.txt
+min_age: 18
+jwt_access_minutes: 30
+upload_cap_per_account: 50
+login_ratelimit_max_attempts: 5
+login_ratelimit_window_seconds: 900
+jitter_min_m: 200
+jitter_max_m: 500
+console_mail_dir: lite/data/mail/
+location_required: true
