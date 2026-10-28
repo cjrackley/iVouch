@@ -129,5 +129,44 @@ before gating; env setup only, no tree change.
 Commit: (recorded after commit)
 
 # Spec status: 2/4 ACCEPTED; open: 0.3, 0.4
+- Commit b05de87 recorded for 0.2 (4 files, working tree clean after).
+
+### Task 0.3 implement, attempt 1 (cont)
+- Objective: synthetic fixtures (spec 0.3)
+- Touched: none (reused prior-run generate.py and test_fixtures.py unchanged; nothing was broken)
+- Created: lite/tests/fixtures/solid_no_exif.jpg, text_no_exif.jpg, shapes_gps.jpg, shapes_editor.jpg, shapes_q50.jpg, shapes_basic.png, mock_hashes.txt (via running the generator; ~32 KB total)
+- Tests: python -m pytest lite/tests -q -- 19 passed
+- Test integrity: no locked-path edits; no existing-test edits; failures: none
+- Dependencies: none added (pillow==13.0.0 BSD, piexif==1.1.3 MIT, pytest==9.2.0 MIT, pyyaml==6.0.3 MIT -- pins and licences already in lite/requirements.txt per 0.1 entry)
+- Resources: well within 60 min budget; Python 3.11.1 (spec prefers 3.12; 3.11 permitted with this note); Pillow default font only, fixed SEED 20261028, no timestamps embedded
+- Checkpoint: lite/work/checkpoints/spec-0-0.3.md
+- Mocks/blocked: none (mock_hashes.txt is the spec-1 mock safety gate input: sha256 list over benign synthetic fixtures only)
+- Signals: none; note: pytest-of-camer/ artifact appeared in repo root during test run, left in place per no-delete rule
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit; first run dispatched
+2026-10-28T16:47:55-04:00 went quiet with no checkpoint after 16:53 and
+was stopped at ~19:04 (over budget, >2h quiet); continuation dispatched
+19:04:38, entry landed same evening, 19 tests green).
+Gates: (1) diff clean — lite/tests/fixtures/ (6 images ~32 KB +
+mock_hashes.txt + generate.py) and lite/tests/test_fixtures.py new,
+plus orchestrator log; no locked-path edits, nothing over 5 MB;
+__pycache__ correctly ignored; pytest/tmp junk removed by
+orchestrator. (2) tests run in-session: 19 passed. (3) integrity: new
+test file with real asserts (byte-identical determinism, committed
+files match generator, EXIF variants parse as claimed, hash coverage).
+(4) honesty: no mocks; criteria genuinely pass. (5) log entry
+complete. Orchestrator notes: (a) prior run produced generate.py +
+test_fixtures.py but never generated images — likely stuck on
+missing piexif/pillow installs; orchestrator installed pinned
+pillow==13.0.0 + piexif==1.1.3 into the session interpreter (env
+setup, no tree change) before re-dispatching. (b) Per
+bundled:python-env, fresh checkouts should use a project-local .venv
+(uv venv + install lite/requirements.txt); this running build stays
+on the session interpreter for continuity, recorded here; spec-4
+README/DEMO will document the .venv setup.
+Commit: (recorded after commit)
+
+# Spec status: 3/4 ACCEPTED; open: 0.4
 
 <!-- END-OF-LOG -->
