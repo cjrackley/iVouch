@@ -25,11 +25,15 @@ lets later phases be built one at a time without renegotiating them.
 ## Agent dispatch note
 
 Phase 0 uses the **bootstrap exception** (orchestrator §5): briefs that
-create `contracts/**`, `config/**`, CI files, `tasks.py`, the 0.4 policy
+create `contracts/**`, `config/**`, CI files, `tasks.py`, `.env.example`,
+`.gitattributes`, the 0.4 policy
 documents, the 0.7 `docs/` files, or the 0.7 `logs/specN_log.md` files
 list them in `allowed_paths` (logs via `new_files`, never overwriting a
 log that has entries); they are not locked for those briefs. From
-Phase 1 on they are locked normally.
+Phase 1 on they are locked normally. The orchestrator creates skeleton
+`docs/HUMAN_INPUTS.md` and `docs/BLOCKED.md` at phase start
+(orchestrator §1 step 0) so blockers can be recorded from the first
+brief; objective 0.7 completes their contents.
 
 ## Objectives
 
@@ -75,6 +79,10 @@ Task runner: `tasks.py`, Python standard library only, targets:
 - `python tasks.py env-check --names HF_TOKEN ...` — prints only
   `present`/`missing` per name. This is the **only** way agents may
   check credentials; nobody reads `.env` directly.
+- `python tasks.py run` — local server + worker for end-to-end tests.
+  Not a Phase 0 deliverable: the Phase 4 brief that first needs it
+  adds the target via the orchestrator §5.2 unlock procedure, with the
+  reason recorded. Until then `run` may print "not yet implemented".
 
 All targets work in Windows PowerShell and on the Linux CI runner. No
 bash scripts or Makefiles. The runner creates `work/checkpoints/` and
@@ -88,15 +96,26 @@ passes on a clean clone.
   clean clone on Windows. (CI confirms the same on Linux whenever the
   user pushes; CI is recorded, not gating — orchestrator §6.)
 - [ ] `python tasks.py up` starts PostgreSQL (with `postgis` and
-  `vector` extensions) and MinIO; a healthcheck script exits 0. If
-  Docker is absent this box is ENV-BLOCKED, not failed. No stock image
-  ships both extensions; the brief may add `infra/Dockerfile.postgres`
-  (or a chosen third-party image, license recorded) with a decision
-  record. Container-registry hosts go in the brief's `network_allowed`.
-- [ ] CI workflow runs `python tasks.py check` on push.
+  `vector` extensions) and MinIO; the healthcheck
+  `infra/healthcheck.py` (created by the 0.1 brief, stdlib + psycopg
+  or httpx as pinned) exits 0 when both answer. If Docker is absent
+  this box is ENV-BLOCKED, not failed. No stock image ships both
+  extensions; the brief may add `infra/Dockerfile.postgres` (pin the
+  base, e.g. `postgres:16`, plus PostGIS/pgvector versions, license
+  recorded) or a chosen third-party image with a decision record.
+  Container-registry hosts go in the brief's `network_allowed`.
+- [ ] CI workflow (`.github/workflows/check.yml`, `ubuntu-latest`,
+  Python 3.12, uv, `python tasks.py check` on push; no Docker services
+  in CI for Phase 0 — services are tested locally) runs the check.
+  Later phases add jobs (e.g. Android in Phase 6) via the §5.2 unlock
+  procedure.
 - [ ] `.gitignore` excludes `data/`, `work/`, model weights, `.env`;
   `.env.example` lists every env var used, including `ARTIFACT_ROOT`,
   `ENV`, `ORIGINALS_KEY`, `QUARANTINE_KEY`.
+- [ ] `.gitattributes` pins LF (`* text=auto eol=lf`, `*.md text
+  eol=lf`) so the log sentinel stays an exact match on Windows;
+  `.gitignore` itself is user-owned and verified, never edited by a
+  brief — a gap in it is reported to the user, not fixed.
 - [ ] `env-check` prints no secret values (test greps its output).
 
 ### 0.2 API and data contracts
@@ -189,8 +208,9 @@ user approves:
   removal of an intimate image shared without consent, the 48-hour
   commitment, and that identical copies are removed too.
 
-Serve all three via `GET /v1/policy` (Phase 4) and bundle copies in the
-Android app as an offline fallback.
+Phase 4 serves all three via `GET /v1/policy` and the Android app
+bundles copies as an offline fallback; Phase 0 only writes the
+documents and checks version/field consistency here.
 
 **Acceptance criteria**
 
@@ -232,7 +252,7 @@ source URL, **license**, intended use (`research` /
 
 ```python
 # common/ivcommon/registry.py
-def register_dataset(name: str, version: str, path: Path, license: str, source: str, parents: list[str] = []) -> None: ...
+def register_dataset(name: str, version: str, path: Path, license: str, source: str, parents: list[str] | None = None) -> None: ...
 def register_model(name: str, version: str, artifacts: dict[str, Path], dataset_version: str, embedding_version: str | None, license: str) -> None: ...
 def resolve(name: str, version: str = "latest") -> RegistryEntry: ...  # verifies sha256, errors clearly if artifact missing
 ```
@@ -264,7 +284,9 @@ Create:
 
 **Acceptance criteria**
 
-- [ ] All files exist; `HUMAN_INPUTS.md` lists every gate from every
+- [ ] All files exist (the orchestrator's phase-start skeletons for
+  `HUMAN_INPUTS.md`/`BLOCKED.md` completed, not overwritten);
+  `HUMAN_INPUTS.md` lists every gate from every
   phase spec; every spec log ends with the sentinel.
 
 ### 0.8 Synthetic fixtures
@@ -286,21 +308,28 @@ upload). Real providers are implemented in Phase 4.
 
 ```python
 # common/ivcommon/hashmatch.py
+class HashMatcherUnavailable(Exception): ...  # provider outage (Phase 8: uploads stay queued)
 class HashMatchResult(BaseModel):
     matched: bool
     provider: str
     match_id: str | None
 class HashMatcher(Protocol):
-    def check(self, image_bytes: bytes) -> HashMatchResult: ...
-class MockHashMatcher: ...  # matches only sha256s in a test config of benign fixtures
+    def check(self, image_bytes: bytes) -> HashMatchResult: ...  # raises HashMatcherUnavailable on outage, never returns matched=False for one
+class MockHashMatcher: ...  # matches only sha256s in config/test_hashmatch.yaml (benign fixtures); raises HashMatcherUnavailable when configured to simulate outage
 def get_hash_matcher() -> HashMatcher: ...  # Mock allowed only when ENV in {dev, test}
 ```
+
+The mock list lives at `config/test_hashmatch.yaml` (created by the
+0.9 brief). `ENV` comes from the environment (see `.env.example`).
 
 **Acceptance criteria**
 
 - [ ] `get_hash_matcher()` raises at startup if `ENV` is not
   `dev`/`test` and no real provider is configured (test).
 - [ ] Mock match list contains only Phase 0 synthetic fixtures.
+- [ ] `check` outage raises `HashMatcherUnavailable` (test with the
+  mock in outage mode); callers treat it as retry-later, never as a
+  non-match.
 
 ## Agent notes
 
@@ -325,6 +354,9 @@ Every acceptance criterion recorded as passing in `logs/spec0_log.md`
 (the boxes above are spec source text and are never ticked; see
 `logs/README.md`), `python tasks.py check` green on Windows,
 `docs/HUMAN_INPUTS.md` complete. A criterion that cannot run — Docker
-absent for the services box, for example — is ENV-BLOCKED, logged in
-`BLOCKED.md`, and keeps the phase open under orchestrator §7. There is
-no partial completion.
+absent for the services box, for example — keeps its objective
+BUILD-ACCEPTED with the criterion listed as open (orchestrator §7),
+logged in `BLOCKED.md`: the phase may be build-complete and sequence
+to Phase 1, but the criterion still has not passed and no launch
+claim may rest on it. An objective with no provisional path stays
+open and blocks sequencing.

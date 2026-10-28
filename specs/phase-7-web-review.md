@@ -38,7 +38,8 @@ a web link for deletion requests).
 - [ ] The deletion page works for a logged-in user, is linked from the
   site footer, and its URL is in config for the Play Console listing.
 - [ ] Session cookies are HttpOnly + Secure + SameSite; all POST forms
-  have CSRF protection (test).
+  have CSRF protection (Starlette CSRF middleware or a custom
+  synchronizer token, builder chooses and documents; test).
 
 ### 7.2 Web upload page
 
@@ -86,9 +87,12 @@ Shared login; screens depend on role.
 # server/ivserver/web/review.py
 def queue_page(request, filters: QueueFilters) -> HTMLResponse: ...
 def report_page(request, report_id: str) -> HTMLResponse: ...
-# server/ivserver/cli.py
+# server/ivserver/cli.py (stdlib argparse; no new CLI dependency)
 def create_staff(email: str, roles: list[str]) -> None: ...   # roles ⊆ {reviewer, safety_officer, admin}
 ```
+
+The reviewer mini-map reuses the tile style URL from server config
+(same source as Android).
 
 **Acceptance criteria**
 
@@ -160,7 +164,10 @@ def export_review_labels(since: datetime, out: Path) -> Path: ...  # parquet com
 - [ ] Fully keyboard-operable review and takedown actions.
   (Playwright/browser unavailability in the agent environment is
   ENV-BLOCKED with the tool error recorded, not a silent skip. The brief
-  lists Playwright browser-download hosts in `network_allowed`.)
+  lists Playwright browser-download hosts (`playwright.azureedge.net`,
+  `cdn.playwright.dev`, `registry.npmjs.org` as needed) in
+  `network_allowed`; browsers install via `playwright install
+  chromium`.)
 
 ## Agent notes
 
@@ -186,6 +193,7 @@ executes → target and copies gone → requester status shows done;
 (3) reviewer flags a fixture → appears only in the safety console →
 officer prepares a mock CyberTip report. A criterion that cannot run —
 Playwright/browser unavailable, no named safety officer for the real
-contact details — stays open (ENV-BLOCKED / NEEDS-USER-APPROVAL) and
-keeps the phase incomplete under orchestrator §7. There is no partial
-completion.
+contact details — stays open under the objective's BUILD-ACCEPTED
+verdict where a fallback exists, or ENV-BLOCKED /
+NEEDS-USER-APPROVAL where none does (orchestrator §7); either way it
+keeps the phase from launch-completion.

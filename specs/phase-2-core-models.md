@@ -56,6 +56,14 @@ def embed_images(manifest: pd.DataFrame, backbone: nn.Module, out_dir: Path,
                  batch_size: int = 128, store_patch_tokens: bool = False) -> EmbeddingStore: ...
 ```
 
+The exact DINOv3 checkpoint repo ID and config (mean/std, dim D) are
+resolved from HuggingFace at build time, verified against the
+checkpoint config, and recorded in the registry entry plus a decision
+record. `HF_TOKEN` (if the checkpoint is gated) comes from the
+environment and is never logged. Config dataclasses (`HeadConfig`,
+`TextConfig`) are defined by the builder and documented in the model
+card.
+
 **Acceptance criteria**
 
 - [ ] Embeddings cached under `ARTIFACT_ROOT` with `embedding_version`
@@ -160,21 +168,40 @@ def make_test_vectors(module: nn.Module, images: list[Path], out: Path) -> Path:
 - [ ] `test_vectors/` contains ≥ 30 images (fixtures or license-cleared
   data) with expected outputs for every output tensor. Test vectors
   are small and committed (prefer Phase 0 fixtures as the images so the
-  diff stays small); the model files they exercise are resolved
-  through the registry.
-- [ ] `MODEL_CARD.md` (data, metrics, limits, license) and registry
-  entry written.
+  diff stays small; each vector JSON ≤ 100 KB, total committed vectors
+  ≤ 2 MB); the model files they exercise are resolved through the
+  registry.
+- [ ] `ml/MODEL_CARD_iv_core.md` (data, metrics, limits, license) and
+  registry entry written.
 
 ## Agent notes
 
+- **Provisional mini-models (the normal first pass).** The heads are
+  small by design: train them on the embeddings and data actually
+  available — a CPU/GPU subsample is a legitimate first artifact.
+  Register every such artifact with `provisional: true`, report the
+  metrics it actually scores, set untrained categories to
+  `unavailable`, and list each unmet metric criterion as open. The
+  objective is then BUILD-ACCEPTED (orchestrator §7): Phase 4
+  integrates the artifact behind `StubModelRunner`, and the metric
+  criteria close only when they pass on the full inputs. Do not wait
+  for full-corpus compute to produce a first artifact, and do not
+  present a provisional metric as a passed one.
 - The same `preprocess` is reimplemented in Kotlin (Phase 6). Keep it
   simple and documented; mismatched resizing is the most common cause
   of phone/server disagreement.
 - Freeze the backbone. Fine-tuning DINOv3 is out of scope for v1.
 - ExecuTorch export: use `torch.export` + XNNPACK partitioner; check
   current ExecuTorch docs for the exact API, which changes between
-  releases. If export needs a network fetch (docs/packages), the brief
-  must list those hosts in `network_allowed`.
+  releases. Public tooling docs/packages hosts (`pytorch.org`,
+  `pytorch.kr`, `pypi.org`, `github.com`) may be listed directly in
+  the brief's `network_allowed` without separate HUMAN_INPUTS approval
+  (AGENTS.md §4.10). Pin the ExecuTorch/torch version used.
+- Quantization fallback: `int8` is the default. If the agreement
+  criterion fails, the builder may try one documented int8-granularity
+  variant; if it still fails, return an evidence pack
+  (quantization-unreachable) instead of burning attempt 2 on further
+  variants. Changing the size budget itself needs the user (§9).
 - DINOv3 uses its own license (not Apache 2.0). Record it in the
   registry.
 - Policy-set images must never appear in eval reports, sample sheets
@@ -198,7 +225,9 @@ Artifacts registered under `ARTIFACT_ROOT`, test vectors published,
 eval reports in `eval/reports/`, thresholds written, and every
 acceptance criterion recorded as passing in `logs/spec2_log.md` (the
 boxes above are spec source text and are never ticked; see
-`logs/README.md`). Gaps are recorded in `BLOCKED.md` and keep their
-objective — and the phase — open under orchestrator §7. A category
-marked `unavailable` or `low_confidence` is a routing state, not a
-passed criterion. There is no partial completion.
+`logs/README.md`). Gaps are recorded in `BLOCKED.md`: an objective
+with a registered provisional artifact is BUILD-ACCEPTED with its
+unmet criteria listed as open, and the phase may be build-complete
+under orchestrator §7. A category marked `unavailable` or
+`low_confidence` is a routing state, not a passed criterion, and no
+metric or launch claim may rest on a provisional artifact.

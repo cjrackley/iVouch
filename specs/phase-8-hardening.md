@@ -43,11 +43,17 @@ launch happens while a launch-checklist item is `blocked`.
   worker crash mid-job, provider timeouts (reverse search, escalation,
   hash matching, email), DB restart.
 - [ ] Hash-matching provider outage: uploads stay queued (not
-  processed, not published) until the check succeeds (test).
+  processed, not published) until the check succeeds (test with the
+  mock in outage mode raising `HashMatcherUnavailable` per the Phase 0
+  interface; the Phase 4 pipeline catches it as retry-later).
 
 ### 8.2 Red-team suite
 
-`eval/redteam/` with automated cases:
+`eval/redteam/` with automated cases. Image sources: reuse the Phase 5
+forensic held-out generator images and Phase 0 fixtures (spliced,
+re-encoded, EXIF-forged variants made locally); policy-evasion cases
+use only the approved Phase 1 policy sets. Never fetch new images
+from the web for red-teaming.
 
 - AI-generated incident images (held-out generators), spliced/edited
   photos, old web photos re-uploaded as new, forged EXIF times/GPS,
@@ -84,10 +90,11 @@ launch happens while a launch-checklist item is `blocked`.
 - [ ] `GET /v1/incidents` p95 < 300 ms at 1M reports under concurrent
   load (ENV-BLOCKED without a database/load environment; the load
   script and baseline numbers are still deliverables).
-- [ ] Ingest sustains a target uploads/minute (set in
-  `thresholds.yaml` after a baseline run — setting it from a measured
-  baseline is calibration, not lowering a target) with worker scaling
-  documented.
+- [ ] Ingest sustains a target uploads/minute with worker scaling
+  documented. The target is set once in `thresholds.yaml` from a
+  measured baseline (sustained throughput at p95 within limits, with
+  headroom documented — calibration, not lowering). Setting a later
+  target below the measured baseline is lowering and needs the user.
 - [ ] Device-vs-server parity drift tracked as a metric with an alert
   threshold.
 
@@ -103,11 +110,14 @@ launch happens while a launch-checklist item is `blocked`.
 - [ ] Dependency vulnerability scan in CI (pip-audit, Gradle
   dependency check) with no high/critical findings.
 - [ ] Secrets only from env/secret manager; a test greps the repo and
-  built artifacts for key patterns (and confirms `tasks.py env-check`
-  output contains no secret values).
+  built artifacts for key patterns (`AKIA…`, `sk-…`, `ghp_…`,
+  `-----BEGIN .*PRIVATE KEY`, `HF_TOKEN\s*=\s*\S+`, `*_KEY\s*=\s*\S+`;
+  docs/examples allowlisted by exact path) and confirms `tasks.py
+  env-check` output contains no secret values.
 - [ ] Security checklist (auth, CSRF, signed URLs, audit log
   integrity, encryption at rest, TLS) completed in
-  `docs/SECURITY_CHECKLIST.md`.
+  `docs/SECURITY_CHECKLIST.md`. Order: 8.5 before 8.6 (the NIST check
+  in 8.6 reads this file).
 
 ### 8.6 Operations
 
@@ -138,16 +148,18 @@ launch happens while a launch-checklist item is `blocked`.
   contact/takedown process. States plainly that v1 is Android + web
   only.
 - [ ] Store-compliance check: account deletion in the Android app and
-  on the web, Play Console data-safety form drafted for the user to
-  submit.
+  on the web, Play Console data-safety form drafted (Markdown checklist
+  in `docs/PILOT_PACK.md` appendix) for the user to submit.
 - [ ] Launch checklist with every human gate from all phases and its
-  status. A blocked launch item keeps this objective open
-  (NEEDS-USER-APPROVAL) and Phase 8 incomplete: the checklist being
-  written is not the same as the launch being ready, and no phase
-  status may imply "ready for the user to finish launch". Only when
-  every item is provided, or removed by the user editing the
-  requirement itself, does the objective pass — and even then
-  it means "ready for the user to launch", never "launched".
+  status (`provided` / `blocked` with evidence). 8.7 passes when the
+  checklist is written and every status is accurate — blocked gates do
+  **not** keep 8.7 open. They are launch blockers, not build failures:
+  they stay listed in `docs/BLOCKED.md` and the `# Phase status` note,
+  and no status may imply "ready to launch" while any item is blocked.
+  No public launch happens while NCMEC registration, real CSAM
+  hash-matching access, legal review, or commercial license review is
+  blocked (user responsibility). "Phase 8 complete" means
+  build-complete, never launched.
 
 ## Agent notes
 
@@ -172,8 +184,8 @@ All suites green locally, reports published, and every acceptance
 criterion recorded as passing in `logs/spec8_log.md` (the boxes above
 are spec source text and are never ticked; see `logs/README.md`). A
 suite that cannot run is ENV-BLOCKED with the missing environment
-named, and a launch checklist with any item still blocked keeps 8.7
-open (NEEDS-USER-APPROVAL); either keeps Phase 8 incomplete under
-orchestrator §7. Human-owned items remaining on the checklist are
-reported in `# Phase status`, not absorbed into a completion report.
-There is no partial completion.
+named, or BUILD-ACCEPTED where its script and baseline are
+deliverables (orchestrator §7). Blocked launch-checklist items do not
+keep 8.7 open (see 8.7); they remain listed in `docs/BLOCKED.md` and
+`# Phase status` as launch blockers. Phase 8 build-complete is never
+a launch claim while any launch item is blocked.

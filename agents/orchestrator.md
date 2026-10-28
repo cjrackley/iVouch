@@ -45,26 +45,42 @@ Phases are grouped into two-phase blocks with one manual gate per block:
   `start phase 3` is **not** a valid start (except `start phase 8`,
   above); reply naming the block command that covers it and wait.
 - Within a block there is **no manual stop between the two phases**.
-  When the first phase reaches ACCEPTED and its completion report is
+  When the first phase reaches ACCEPTED or BUILD-ACCEPTED
+  (BUILD-COMPLETE, §7) and its completion report is
   committed, start the second phase automatically in the same session —
   re-running the dependency and human-input checks below for that phase
   first. Do not ask the user anything at the transition except a §9
-  decision. A phase with any objective not ACCEPTED has not completed:
-  there is no completion report, no automatic transition, and no next
-  block until every criterion actually passes (§7).
+  decision. A phase with any objective in NEEDS-USER-APPROVAL (no
+  mock), ENV-BLOCKED (no provisional path) or REJECTED has not
+  completed in either sense: there is no completion report, no
+  automatic transition, and no next block (§7).
 - After the second phase (or Phase 8) completes, **stop**. Append the
   block handoff note (§11), report to the user, and wait for the next
   block command. Never roll into the next block.
+- **Build-complete vs launch-complete (applies everywhere).** A phase
+  whose objectives are all ACCEPTED or BUILD-ACCEPTED (§7) is
+  BUILD-COMPLETE: it permits sequencing (the automatic transition and
+  the next block) but never a launch claim. Only a phase with every
+  objective ACCEPTED is launch-complete. BUILD-ACCEPTED work must keep
+  its mock/stub/provisional fallback wired in, must be registered or
+  logged as provisional, and its open real-input criteria stay listed
+  in `docs/BLOCKED.md` until they actually pass. Downstream phases may
+  build against provisional artifacts; they may not treat them as
+  accepted evidence.
 - **Early block stop:** if a phase ends with any objective at
-  NEEDS-USER-APPROVAL, ENV-BLOCKED, or REJECTED after the attempt cap,
+  NEEDS-USER-APPROVAL (with no mock/fallback, §7), ENV-BLOCKED (with no
+  provisional path, §7), or REJECTED after the attempt cap,
   the phase is not complete (§7), so never auto-start the next phase —
   whether or not its objectives depend on the stuck work. Stop the
   block, name the stuck objectives, and wait. Re-issuing the same block
-  command later resumes at the first unfinished phase; never redo an
-  ACCEPTED phase. A re-issued command after a session break resumes the
-  same way: rebuild state from the logs, re-check open objectives, and
-  dispatch only unfinished work with fresh roster entries (new
-  `started_at` per new brief); accepted work is never re-briefed.
+  command later resumes at the first unfinished phase; REJECTED counts
+  as unfinished and gets a fresh 2-attempt cycle per §3 (user command
+  is the re-authorization). Never redo an ACCEPTED phase. A re-issued
+  command after a session break resumes the same way: rebuild state
+  from the last `# Phase status` line plus `docs/BLOCKED.md` (full
+  logs only on conflict), re-check open objectives, and dispatch only
+  unfinished work with fresh roster entries (new `started_at` per new
+  brief); accepted work is never re-briefed.
 - On a block start, verify every dependency phase of both phases is
   ACCEPTED (§7). If not, refuse and name the blocking phase. Re-verify
   the second phase's dependencies again at the automatic transition.
@@ -73,9 +89,20 @@ Phases are grouped into two-phase blocks with one manual gate per block:
   0. **Ensure the phase log exists.** If `logs/specN_log.md` is missing,
      create it yourself with `muse.write_file` (title line plus the
      `<!-- END-OF-LOG -->` sentinel) before any builder is dispatched.
-     Builders never write logs, and Phase 0's file-creation objective
-     (0.7) normally comes after the first entries must be appended, so
-     this step is yours, not a brief's.
+     Builders never write logs (sole exception: Phase 0 objective 0.7
+     creating still-missing spec logs via `new_files`), and Phase 0's
+     file-creation objective normally comes after the first entries
+     must be appended, so this step is yours, not a brief's.
+     **Phase 0 only:** also create skeleton `docs/HUMAN_INPUTS.md` and
+     `docs/BLOCKED.md` yourself at this step if missing (title line
+     only); objective 0.7 completes their contents. Blockers therefore
+     have a sanctioned home from the first brief, not from 0.7.
+     **Baseline snapshot:** record `git status --short` in the phase
+     start entry. Files already dirty before this session are the
+     user's pre-existing work: exclude them from every builder diff
+     gate in this phase, never commit them as builder work, and if a
+     brief's `allowed_paths` overlaps a pre-dirty file, stop and ask
+     the user to commit or set that work aside first.
   1. Record the session model/effort as `unobserved`. No Muse tool
      reports them; the user sets them at launch and you cannot change
      them. Never guess a model name, and never stop work over it.
@@ -115,23 +142,34 @@ dispatch. Never claim a native builder ran on a chosen model.
   type (`tests` / `implement` / `eval`) has a non-null tier there; and
   the tier's model is an exact ID the user supplied from Muse's
   own catalogue (never a guessed alias). Then:
-  1. Call `muse.workflow` with a script containing exactly one
+  1. Call `muse.workflow` with a `name` (e.g.
+     `phase-4-4.4-implement-a1`) plus a script containing exactly one
      `host.agent({input, model, effort, label})` call for this brief —
      one builder per workflow run, no worktree isolation. `input` is
      the full brief text plus "read `AGENTS.md` and
-     `agents/builder.md` first". `label` is the objective id.
-  2. The child returns its log entry as its result text. Take it from
-     the workflow result; if the result is null, truncated, missing, or
-     carries an error (`error_kind`, `not_admitted`, schema rejection),
-     the brief has not returned — wait for or re-read the child result,
-     and never reconstruct an entry for it.
+     `agents/builder.md` first". `label` is the objective id. The
+     `name` param is required; a call without it fails validation.
+  2. The child returns its log entry as its result text. The primary
+     channel is the `muse.workflow` call's own returned result:
+     read the entry from there. `muse.work_status` / `muse.work_list`
+     report run status only; their summaries are bounded and may
+     truncate, so never treat them as the entry channel. Never use
+     `muse.subagent_wait` on a workflow run id (wrong id type; it
+     will fail). Every brief also sets `entry_file` (§5): the builder
+     writes its full entry to that ignored file as well as returning
+     it, so if the returned result is null, truncated, missing, or
+     carries an error (`error_kind`, `not_admitted`, schema
+     rejection), read the entry from `entry_file` with
+     `muse.read_file` instead. Only if both channels fail has the
+     brief not returned; never reconstruct an entry for it.
   3. Judge, log and commit exactly as for a native builder (§6, §10).
      The workflow run id goes on the roster in place of a spawn ID.
 
-  Shape of the script (fill in the brief text and the tier values from
+  Shape of the call (fill in the brief text and the tier values from
   `agents/models.yaml`; omit `model`/`effort` only to inherit):
 
   ```js
+  // muse.workflow params: { name: "<run name>", script: <below> }
   export default async function workflow(host) {
     const result = await host.agent({
       input: "Read AGENTS.md and agents/builder.md first.\n\n<brief YAML>",
@@ -145,20 +183,36 @@ dispatch. Never claim a native builder ran on a chosen model.
 - **Native dispatch (inherit).** Call
   `muse.subagent_spawn(command_id, role, objective)` with a fresh,
   never-reused `command_id` (e.g. `phase-4-4.4-tests-a1-<random>`),
-  `role` naming the builder role, and `objective` containing the full
-  brief YAML plus "read `AGENTS.md` and `agents/builder.md` first".
-  There is no brief parameter and no `ivouch-builder` agent type; do
-  not invent either. Collect the result with `muse.subagent_wait` (a
-  fresh `command_id` plus the child's `subagent_id`/`agent_path` on
-  every call; a `timeout`/`would_park` return means the child is still
-  running — keep working or end the turn and the result is delivered
-  automatically) and `muse.subagent_read_result`; cancel with
-  `muse.subagent_cancel` (fresh `command_id` plus the child identity).
+  `role` as free text naming the builder role (e.g. `ivouch-builder`;
+  this is a display string, not a registered agent type), and
+  `objective` containing the full brief YAML plus "read `AGENTS.md`
+  and `agents/builder.md` first". There is no brief parameter: omit
+  `subagent_type` (general-purpose) and never invent an
+  `ivouch-builder` agent type. Collect the result with
+  `muse.subagent_wait` (a fresh `command_id` plus the child's
+  `subagent_id`/`agent_path` on every call; default wait is 30 s — a
+  `timeout`/`would_park` return means the child is still running, so
+  do not poll in a loop: keep working or end the turn and the result
+  is delivered automatically) and `muse.subagent_read_result`; cancel
+  with `muse.subagent_cancel` (fresh `command_id` plus the child
+  identity).
 - Record per brief: dispatch mechanism, model/effort requested (or
   `inherit`), spawn ID or workflow run id, objective, `started_at`
-  timestamp (read `Get-Date -Format o` at dispatch), status. A spawn
-  call returning is not proof a builder started; a quiet builder is not
-  proof it finished. Check `muse.subagent_status` before assuming.
+  timestamp (read `Get-Date -Format o` at dispatch), status. `started_at`
+  is dispatch time; queue delay means the builder may start later, so
+  wall time from the roster can exceed the builder's own budget
+  measurement — note the skew, never treat it as a gate failure. A
+  spawn call returning is not proof a builder started; a quiet builder
+  is not proof it finished. Check `muse.subagent_status` (native) or
+  `muse.work_status` (workflow) before assuming.
+- **Hung builders.** Builders checkpoint at least every 15 minutes
+  (builder §4). If a builder exceeds its brief budget with no
+  checkpoint update in the last 30 minutes, stop it — native:
+  `muse.subagent_cancel` with a fresh `command_id`; workflow:
+  `muse.work_stop` with the run's work id — then log the stop and
+  re-dispatch as a continuation from the last checkpoint (§3). Do not
+  wait indefinitely on a quiet builder, and do not re-read status in
+  a loop: check once, act, and move on or end the turn.
 - **Builders run one at a time.** `max_concurrent_builders` in
   `agents/models.yaml` is 1: one shared tree and one shared git index
   cannot attribute interleaved changes to individual briefs (§6.1).
@@ -175,11 +229,40 @@ If a builder fails a gate or its work is inadequate, re-dispatch the same
 brief to a fresh builder (new context) with a written rejection note
 naming the failed gate(s).
 
-- One "attempt" = one builder run of one brief (tests or implement). Max
-  2 attempts per brief; the tests brief and the implementation brief each
-  get their own 2. After attempt 2 fails a gate, the objective is
-  REJECTED (§7): stop, log both attempts, and report to the user. Do not
-  dispatch a third attempt on your own authority.
+- One "attempt" = one builder run of one brief (tests, implement or
+  eval) **that ends in a gate verdict**. Max 2 attempts per brief per
+  block run; the tests brief and the implementation brief each get
+  their own 2. After attempt 2 fails a gate, the objective is
+  REJECTED (§7): stop, log both attempts, and report to the user. Do
+  not dispatch a third attempt on your own authority. REJECTED is
+  terminal for the current block run only: when the user later
+  re-issues the same block command (§1 early stop), that command
+  authorizes a fresh 2-attempt cycle for each still-open objective
+  (including REJECTED ones), with prior history logged and a new
+  rejection note. Never re-attempt without that user command.
+- **Continuations are not attempts.** A run ending in
+  `BUDGET-EXHAUSTED` with a valid checkpoint, `ENV-BLOCKED`, or any
+  `NEEDS-*` / `BLOCKED-NO-MOCK` / `SAFETY-STOP` signal has not been
+  judged and consumes no attempt. Re-dispatching to resume from a
+  checkpoint continues the same attempt; say `attempt: N (continued)`
+  in the brief and paste the checkpoint path. A checkpointed long job
+  may be continued as many times as its checkpoint shows progress;
+  two consecutive continuations with no checkpoint progress count as
+  one failed attempt.
+- **Signal dispositions** (builder signals, builder.md §5):
+  `NEEDS-BRIEF-FIX` — fix the brief yourself and re-dispatch; not an
+  attempt, and never grounds for REJECTED. `NEEDS-SCOPE-CHANGE` —
+  widen the brief via §5.2 with a decision record, or treat as §9 if
+  it needs a contract break or protected file; not an attempt.
+  `NEEDS-TEST-CHANGE-APPROVAL` — §4 authorisation path; the test-fix
+  brief gets its own cycle, capped at 2 test-fix cycles per objective
+  per block run, after which the objective is REJECTED.
+  `NEEDS-REMOVAL-APPROVAL` — §8. `NEEDS-USER-APPROVAL` /
+  `BLOCKED-NO-MOCK` — mark the objective NEEDS-USER-APPROVAL (§7);
+  `BLOCKED-NO-MOCK` and `NEEDS-USER-APPROVAL` are the same disposition
+  at orchestrator level. `ENV-BLOCKED` — §7, not an attempt.
+  `SAFETY-STOP` — record the path(s) only, per AGENTS.md §4.9; only
+  the user clears a listed path.
 - The rejection note is what changes between attempts; model/effort change
   only via workflow tiers where configured (§2).
 - **Data-unreachable exit:** if attempt 1 fails a metric criterion and the
@@ -200,16 +283,37 @@ naming the failed gate(s).
 1. **Tests brief.** A builder turns the objective's acceptance criteria
    into tests (including edge/failure paths). No implementation code.
 2. You review the tests against the spec (§6). When accepted, add them to
-   `locked_paths` for every later brief.
+   `locked_paths` for every later brief. Accepting a tests brief is not
+   objective acceptance: log it as `tests accepted` in the `# Phase
+   status` counts, commit it with `Status: tests accepted`, and keep
+   the objective open until the implementation verdict.
 3. **Implementation brief.** A fresh builder writes the code. It may not
    edit the locked tests.
 
 Criteria measurable only by evaluation are covered by eval harness scripts
 named in the spec instead of unit tests; those scripts are locked the same
-way. If a test is simply buggy (not spec-contradicting), you may authorise
+way. An `eval` brief (running a locked harness and reporting metrics)
+is a third brief type with its own 2 attempts; it never edits the
+harness it runs. Where a criterion depends on a choice the spec leaves
+to the builder (segmenter bake-off, CSRF mechanism, storage backend),
+the tests brief tests the spec-level behaviour and the acceptance
+boxes, not an invented internal API: name the behaviour-level test
+surface in the brief so the implementation brief is not locked into
+an interface nobody specified. If a test is simply buggy (not spec-contradicting), you may authorise
 a fix in a new tests brief citing the failing behaviour — record it in the
-log; a `docs/decisions/` record is needed only when the fix changes what
-the spec requires, and user approval only when it lowers a numeric target.
+log, with the brief's `allowed_paths` including `docs/decisions/` only
+when a decision record is needed; a `docs/decisions/` record is needed
+only when the fix changes what the spec requires, and user approval only
+when it lowers a numeric target. An authorised test-fix brief gets a
+fresh 2-attempt cycle; it does not consume the original brief's attempts.
+
+**Intra-phase ordering.** Dispatch objectives in spec order unless the
+spec states a dependency: lower-numbered objectives first, tests brief
+before implement for each objective. Explicit chains win: 0.3 before
+0.4 (versions), 8.5 before 8.6 (checklist before NIST check), 4.1
+before any objective needing migrations. Never dispatch an objective
+whose inputs (versions, schemas, artifacts, checklist) come from a
+still-open objective in the same phase.
 
 **Phase 0 bootstrap ordering.** A tests brief's `must_pass` may only name
 commands that can run before the implementation exists. Objectives that
@@ -226,8 +330,8 @@ that is a brief error (§5), not a builder failure.
 ```yaml
 spec_id: phase-4
 objective: "4.4 Processing worker"
-brief_type: implement            # tests | implement
-attempt: 1
+brief_type: implement            # tests | implement | eval
+attempt: 1                       # or "1 (continued)" for a checkpoint resume (§3)
 dispatch: native                 # native | workflow
 model: inherit                   # inherit, or a models.yaml tier (workflow only)
 effort: inherit
@@ -241,6 +345,7 @@ must_pass: ["python tasks.py check"]
 mocks_allowed: ["StubModelRunner", "MockHashMatcher (dev/test only)"]
 network_allowed: ["pypi.org"]    # see §5.3; a promise you review, not a sandbox rule
 checkpoint: "work/checkpoints/phase-4-4.4.md"   # long jobs update this (see builder §4)
+entry_file: "work/checkpoints/phase-4-4.4-entry.md"  # builder writes its full log entry here too (§2)
 log_spec: phase-4                # builder returns its entry; you append it (§6.2)
 ```
 
@@ -257,7 +362,7 @@ workflow `host.agent` call, preceded by "read `AGENTS.md` and
   without naming the exact files in `unlocked_paths`.
 - **Phase 0 bootstrap exception:** in Phase 0 only, an implementation
   brief whose objective *is* creating `contracts/**`, `config/**`, CI
-  files, `tasks.py`, the 0.4 policy documents, the 0.7 `docs/` files
+  files, `tasks.py`, `.env.example`, `.gitattributes`, the 0.4 policy documents, the 0.7 `docs/` files
   (`HUMAN_INPUTS.md`, `BLOCKED.md`, `decisions/0000-template.md`), or
   the 0.7 `logs/specN_log.md` files lists them in `allowed_paths` (logs
   via `new_files`, never overwriting a log that has entries) and they
@@ -268,9 +373,14 @@ workflow `host.agent` call, preceded by "read `AGENTS.md` and
   no path both allowed and locked unless in `new_files` or
   `unlocked_paths`; `must_pass` matches the task, can actually run on
   this machine, and names no file the phase has not created yet (§4);
-  the task doesn't contradict the spec. Builders stop on a malformed
-  brief (`NEEDS-BRIEF-FIX`). A brief error you catch in this check
-  costs nothing; one you miss costs an attempt.
+  safety/ingest briefs include `docs/BLOCKED.md` in `allowed_paths`
+  when the builder must record paths there; briefs needing a decision
+  record include `docs/decisions/` in `allowed_paths`/`new_files`;
+  briefs whose task needs a new `tasks.py` target list `tasks.py` in
+  `unlocked_paths` with the reason (§5.2); the task doesn't contradict
+  the spec and requires nothing from a future phase. Builders stop on
+  a malformed brief (`NEEDS-BRIEF-FIX`). A brief error you catch in
+  this check costs nothing; one you miss costs an attempt.
 - Builders run one at a time (§2), so no two briefs are ever running
   together. Shared files (`config/thresholds.yaml`, `contracts/**`,
   migrations, `tasks.py`, Gradle build files, `registry/**`) are in any
@@ -296,6 +406,12 @@ the spec needs but the file lacks, marked `# CALIBRATE: Phase N` for
 the current phase, with the keys named in the brief and a decision
 record. Android Gradle files are locked except in Phase 6 briefs that
 own them.
+
+`docs/BLOCKED.md` and `docs/decisions/` are explicitly **not** locked:
+they are shared writable files (one brief at a time). They must still
+appear in the brief's `allowed_paths`/`new_files` for the builder to
+touch them; a builder touching them without that listing fails the
+diff gate.
 
 ### 5.2 Unlocking a locked file for one brief
 
@@ -339,7 +455,9 @@ Enforcement reality: builders run with the same tools you do. These gates
 are how locks are actually enforced — by evidence, after the fact. Builders
 run one at a time (§2), so record a pre-dispatch `git status` snapshot per
 brief; with only one builder running, the diff against it is that
-builder's work.
+builder's work. Run the diff check **before** appending the builder's
+entry and your verdict to the log (§6.2), so your own log write never
+pollutes the builder's diff.
 
 1. **Diff check** (`git status` / `git diff` against the snapshot).
    - No file deletions or renames-as-deletions (§8) unless approved.
@@ -348,9 +466,15 @@ builder's work.
    - No secrets, `.env`, model weights, datasets, policy-set images or
      files over 5 MB in the diff. Model artifacts live under
      `ARTIFACT_ROOT` (default `data/artifacts/`), never in git.
+   - Ignored paths (`data/`, `work/`, `ARTIFACT_ROOT`) never appear in
+     the diff: verify them separately with `muse.powershell` listings
+     (counts, paths, checkpoint presence) and record the check in the
+     verdict. Never accept ignored-path deliverables sight unseen.
    - Every new dependency is pinned, license recorded, not AGPL/GPL
      unless the user approved it.
-   - No builder wrote to `logs/`.
+   - No builder wrote to `logs/` (sole exception: Phase 0 objective 0.7
+     creating missing spec logs via `new_files`, never overwriting one
+     with entries).
 2. **Contract check.** Schemas round-trip, `openapi.yaml` matches the
    app, every new calibrated number lives in `thresholds.yaml` under a
    `# CALIBRATE` key named in the brief.
@@ -371,10 +495,11 @@ builder's work.
 6. **Log check.** The builder's returned entry is complete per
    `logs/README.md`, and you appended it plus your verdict (§6.2).
 
-ACCEPTED only when all six pass. There is no partial acceptance: a
-criterion that could not be run, or that passed only on a mock or a
-provisional substitute for the real input, is not a pass. The objective
-stays open under §7 until the criterion actually passes.
+ACCEPTED only when all six pass. A criterion that could not be run,
+or that passed only on a mock or a provisional substitute for the real
+input, is not a pass: when every runnable criterion passes and the
+only unrun ones need a missing real input, record the verdict as
+BUILD-ACCEPTED (§7) with those criteria listed, never as ACCEPTED.
 
 ### 6.1 Test-integrity rule
 
@@ -401,12 +526,21 @@ entry as text; you append it, then your verdict, to `logs/specN_log.md`.
   by using `muse.edit_file` to replace the sentinel with
   `<entry>\n\n<verdict>\n\n<!-- END-OF-LOG -->`. One entry at a time,
   never in parallel, so same-phase builders' entries never interleave.
+  If the edit fails (no match or multiple matches), read the tail with
+  `muse.read_file`, check for CRLF vs LF or trailing whitespace, fix
+  the sentinel line to exactly `<!-- END-OF-LOG -->` with LF, and retry
+  once. If it still fails, stop and report; never append with
+  PowerShell.
 - UTF-8 without BOM, LF line endings, plain ASCII text. Never use
   PowerShell `Add-Content`, `Out-File`, `>>` or here-strings on logs.
   Entries must never contain the sentinel line; if a builder's entry
   quotes it, paraphrase the quote before appending.
 - After appending, read the file back (`muse.read_file`) and confirm the
-  entry is intact and the sentinel is still last.
+  entry is intact and the sentinel is still last. After each objective
+  verdict, also append a one-line `# Phase status: <n>/<total> ACCEPTED;
+  open: <ids + statuses>` note so the next session can rebuild state
+  from the last status line plus `docs/BLOCKED.md` instead of the full
+  log.
 
 ## 7. Status values
 
@@ -415,30 +549,41 @@ entry as text; you append it, then your verdict, to `logs/specN_log.md`.
 | PROVISIONAL | Builder finished; not yet judged |
 | REJECTED | Failed a gate on both attempts; stop per §3 |
 | ACCEPTED | All gates pass, on the real inputs the criteria name |
-| NEEDS-USER-APPROVAL | Waiting on a §9 decision or a missing human input; other objectives continue |
-| ENV-BLOCKED | Required infrastructure is absent (Docker, GPU, device, service) |
+| BUILD-ACCEPTED | Code/artifact exists and every criterion that can run on available inputs passes; criteria needing a missing real input, real device, real provider or full-scale data are listed as open with the mock/provisional substitute named. Permits sequencing; never a launch claim |
+| NEEDS-USER-APPROVAL | Waiting on a §9 decision or a missing human input **with no mock/fallback**; other objectives continue |
+| ENV-BLOCKED | Required infrastructure is absent (Docker, GPU, device, service) **and no provisional path exists** |
 
-There is no accepted-with-blockers status, and no other form of partial
-or deferred acceptance. A criterion that could not be run — missing
-human input, missing infrastructure, dependency not ready — has not
-passed, whatever mock or provisional substitute let the surrounding
-work continue. Record it in the log and in `docs/BLOCKED.md` with the
-mock in use, and keep the objective open:
+ACCEPTED keeps its strict meaning: a criterion that could not be run
+has not passed, whatever substitute let the work continue.
+BUILD-ACCEPTED is the sequencing status for exactly that situation —
+it records, in the log and in `docs/BLOCKED.md`, the mock/provisional
+substitute in use and each criterion still open, so no reader can
+mistake it for acceptance. Disposition:
 
 - builder's fault -> REJECTED and retried (§3), subject to the
   data-unreachable exit;
 - spec's fault, or a human input with no mock -> NEEDS-USER-APPROVAL
   with the failure or the missing input stated plainly;
-- environment's fault -> ENV-BLOCKED; not an attempt, not a rejection.
+- human input missing **with** a spec-named mock/fallback, or a metric
+  reachable only at a scale this environment cannot run ->
+  BUILD-ACCEPTED with the open criteria listed;
+- environment's fault with no provisional path -> ENV-BLOCKED; not an
+  attempt, not a rejection.
 
-A phase is ACCEPTED only when every objective is ACCEPTED. Any
-objective in another status keeps the phase open: no completion
-report, no completion commit, no automatic transition to the next
-phase, and no next block. Open objectives are re-checked at every
-block start (§1) and dispatched when their blocker clears. The user
-cannot waive a criterion into ACCEPTED; the user can only supply the
-missing input, change the target or the spec (§9), or leave the phase
-open.
+A phase is launch-complete (ACCEPTED) only when every objective is
+ACCEPTED. A phase is BUILD-COMPLETE when every objective is ACCEPTED
+or BUILD-ACCEPTED: write the build completion report (§11), commit
+BUILD-ACCEPTED work labelled as such (never as ACCEPTED), and follow
+the §1 sequencing rules. A phase with any objective in
+NEEDS-USER-APPROVAL (no mock), ENV-BLOCKED (no provisional path) or
+REJECTED gets no completion report and no transition. Open criteria
+are re-checked at every block start (§1) and dispatched when their
+blocker clears; when the last open criterion of a BUILD-ACCEPTED
+objective passes, upgrade it to ACCEPTED in a fresh log entry. The
+user cannot waive a criterion into ACCEPTED; the user can only supply
+the missing input, change the target or the spec (§9), or leave the
+criterion open. No launch, pilot or store submission may be claimed
+while any objective in scope is only BUILD-ACCEPTED.
 
 ## 8. Removals
 
@@ -452,10 +597,19 @@ open.
 ## 9. User-only decisions (never decide these yourself)
 
 Stop the affected objective, mark NEEDS-USER-APPROVAL, log the question,
-continue other work. Put batched §9 questions to the user with
+continue other work. Put §9 questions to the user with
 `muse.request_user_input` no later than the point where the affected
-objective would dispatch or the block would end; unaffected objectives
-keep running meanwhile. Log every answer with the decision.
+objective would dispatch or the block would end. Builders are serial
+and the question blocks your own turn, so nothing "keeps running
+meanwhile": ask before dispatching the affected objective, not after.
+The tool takes at most 3 questions per call (2-3 options each, headers
+≤ 12 chars, question text ≤ 500 chars): split larger batches across
+further calls in later turns, most-blocking questions first. A
+decision that needs a free numeric value must carry the candidate
+values as options; do not expect typed input the tool cannot return.
+Note its answers are product decisions only; they never approve a
+blocked shell command (sandbox approvals use the `require_escalated`
+tool flow, AGENTS.md §3). Log every answer with the decision.
 
 - **Lowering any numeric target**, including "initial" targets,
   tolerances, budgets, thresholds that loosen a criterion. Present the
@@ -473,9 +627,12 @@ keep running meanwhile. Log every answer with the decision.
 ## 10. Commits
 
 You are the only agent that commits. Commit after each objective reaches
-ACCEPTED, and once more for the completion report. Work for an objective
-that is not ACCEPTED is not committed as accepted work; if it must be
-kept, say so in the log and leave it uncommitted for the user. After
+ACCEPTED or BUILD-ACCEPTED, and once more for the completion report.
+BUILD-ACCEPTED work is committed with `Status: BUILD-ACCEPTED` and its
+open criteria named in the message body; it is never committed as
+accepted work. Work for an objective in any other status is not
+committed; if it must be kept, say so in the log and leave it
+uncommitted for the user. After
 logging a failed attempt you may delete files that a failed builder
 created in the current phase (explicit paths, logged, §8); never touch
 files from accepted objectives, and never let stale uncommitted files
@@ -502,7 +659,7 @@ Model: <tier model/effort for workflow dispatch, or "inherit
 (session, unobserved)" for native> (dispatch: native|workflow; tests
 attempt n, code attempt n); reviewed and committed by the orchestrator
 session
-Status: ACCEPTED
+Status: ACCEPTED (or BUILD-ACCEPTED, with open criteria named above)
 Log: logs/specN_log.md
 ```
 
@@ -517,10 +674,13 @@ status, objectives done, files touched, tests/evals run, model/effort and
 dispatch per brief as recorded, attempts and wall time per brief, mocks
 used (a mock in use at acceptance means the criterion itself was defined
 against the mock; §7), decision records, test-integrity notes,
-commit hashes. If any objective is not ACCEPTED there is no completion
-report: append a `# Phase status` note instead listing the open
-objectives and their blockers, and stop (§1). Commit the completion
-report (§10). Only then is the phase complete for sequencing.
+commit hashes. When every objective is ACCEPTED or BUILD-ACCEPTED,
+append a `# Spec build completion report` instead, with the same
+contents plus, per BUILD-ACCEPTED objective, each open criterion, the
+substitute in use and what input closes it; commit it the same way.
+Only a phase in one of those two states is complete for sequencing.
+Otherwise append a `# Phase status` note listing the open objectives
+and their blockers, and stop (§1).
 
 Then follow §1: if this phase is the first of a block, immediately and
 automatically start the second phase (no manual stop, no waiting for the

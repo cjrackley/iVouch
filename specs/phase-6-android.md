@@ -30,10 +30,16 @@ work on it without special hardware.
   is malformed (`NEEDS-BRIEF-FIX`). Gradle wrapper files are shared
   files: one brief at a time (orchestrator §5).
 - Model files are **not** committed. The build resolves them from
-  `ARTIFACT_ROOT` through the registry (a Gradle task verifies sha256
-  and copies them into the app bundle); a clean clone without
-  artifacts builds the app with a stub model and says so in the build
-  log, so CI stays green on machines without GPU artifacts.
+  `ARTIFACT_ROOT` through the registry (Gradle task `:app:copyArtifacts`
+  verifies sha256 and copies them into the app bundle; created by the
+  6.1 brief); a clean clone without artifacts builds the app with a
+  stub model and says so in the build log, so CI stays green on
+  machines without GPU artifacts.
+- Pin all versions in a Gradle version catalog (AGP, Kotlin, Compose
+  BOM, CameraX, Room, Retrofit, ExecuTorch AAR coordinates + min SDK,
+  MapLibre, Play Integrity); record the catalog as the source of
+  truth. Emulator/tool flakes (not assertion failures) are ENV-BLOCKED
+  with the tool error, not builder faults.
 
 ## Module layout
 
@@ -53,7 +59,9 @@ work on it without special hardware.
   the user pushes (recorded, not gating).
 - [ ] API base URL, tile style URL, removal-request page URL and
   environment come from build config, not code.
-- [ ] DTOs validated against `contracts/examples/` in unit tests.
+- [ ] DTOs validated against `contracts/examples/` in unit tests
+  (Gradle copies `../contracts/examples/` into test resources, or
+  tests read the relative path; builder chooses and documents).
 
 ### 6.2 Accounts
 
@@ -78,8 +86,9 @@ class AuthInterceptor : Interceptor        // adds access token; refreshes once 
 
 - [ ] Date of birth is sent only in the register request and never
   stored on the device (test).
-- [ ] Tokens stored with Android Keystore-backed encryption; cleared
-  on logout and account deletion.
+- [ ] Tokens stored with Android Keystore-backed encryption
+  (`EncryptedSharedPreferences` or DataStore + Tink, builder chooses);
+  cleared on logout and account deletion.
 - [ ] Unverified accounts see a "verify your email" screen with
   resend; capture is disabled until verified.
 - [ ] Account deletion reachable from Settings in ≤ 3 taps, confirms
@@ -202,7 +211,9 @@ URL in config; GeoJSON source with built-in clustering.
   tap zooms in.
 - [ ] Tap a dot → bottom sheet: thumbnail, `incident_type — severity`,
   authenticity banner, time, confidence, `View details`, and a
-  "Request removal" link to the removal-request page.
+  "Request removal" link using the removal-request URL from build
+  config. The link target (Phase 7 web page) need not exist yet;
+  Phase 6 tests link presence and URL correctness only.
 - [ ] Filters (type, severity, 24h/7d/30d; `likely-manipulated`
   hidden) map to query params.
 - [ ] Reports without location appear in a list with
@@ -231,11 +242,14 @@ emulator numbers are provisional evidence only when no device exists —
 label them as such and keep the criterion open, per Human inputs)
 
 - [ ] Bundled models ≤ 80 MB (resolved from `ARTIFACT_ROOT` at build
-  time); AAB download size reported.
+  time); AAB download size reported in the eval report (passes when
+  reported, no threshold).
 - [ ] Full on-device analysis p50 ≤ 1.5 s, p95 ≤ 3 s (Macrobenchmark
   or instrumented timing).
-- [ ] Initial map dots ≤ 2 s on simulated 4G.
-- [ ] No ANRs in a 20-minute monkey test.
+- [ ] Initial map dots ≤ 2 s on simulated 4G (instrumented test with
+  mock GeoJSON; tile download mocked).
+- [ ] No ANRs in a 20-minute `adb shell monkey` run. Emulator too slow
+  to run it is ENV-BLOCKED, not failed.
 
 ## Agent notes
 
@@ -266,6 +280,7 @@ Every acceptance criterion recorded as passing in `logs/spec6_log.md`
 server passes: register → verify (via console email) → accept policy →
 capture → upload → report → delete account. Criteria supported only by
 provisional evidence (emulator instead of a device, stub instead of a
-registered model artifact) stay open (ENV-BLOCKED, with the reason in
-`BLOCKED.md`) and keep the phase incomplete under orchestrator §7.
-There is no partial completion.
+registered model artifact) stay open under the objective's
+BUILD-ACCEPTED verdict (reason in `BLOCKED.md`) under orchestrator
+§7: the phase may be build-complete, and no device-performance or
+launch claim may rest on the provisional evidence.

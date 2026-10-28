@@ -17,9 +17,10 @@ training runs unattended.
 
 One rule (orchestrator §1): use the fallback below to keep working and
 log it in `BLOCKED.md`. A fallback never satisfies a criterion that
-requires the real input: the affected objective stays open
-(NEEDS-USER-APPROVAL or ENV-BLOCKED) and keeps the phase incomplete
-until the input arrives and the criterion actually passes.
+requires the real input: the affected objective is BUILD-ACCEPTED
+with the criterion listed as open where a fallback exists, or stays
+open (NEEDS-USER-APPROVAL or ENV-BLOCKED) where none does, until the
+input arrives and the criterion actually passes.
 
 | Input | Needed for | If missing |
 |---|---|---|
@@ -60,16 +61,23 @@ def download_incidents1m(index_path: Path, out_dir: Path, max_workers: int = 16,
 def parse_incidents1m_labels(index_path: Path) -> pd.DataFrame: ...
 ```
 
+Downloader defaults (record any change as a decision): per-request
+timeout 30 s, at most 3 attempts per URL then counted as dead-link,
+`User-Agent: iVouch-data-ingest/1.0 (research)`, shards of 10k URLs
+with per-shard checkpoints.
+
 **Acceptance criteria**
 
 - [ ] Downloader resumes after interruption without re-downloading
-  completed files (checkpointed per shard).
+  completed files (checkpointed per shard; test with a mock HTTP
+  server, not the live web).
 - [ ] `DownloadReport` records requested / downloaded / dead-link /
   non-image / too-small counts; written to
   `data/reports/incidents1m_download.json`.
 - [ ] Every stored image decodes with Pillow and has sha256 + pHash
-  recorded. Files listed via SAFETY-STOP (agent notes) are skipped and
-  counted separately, never retried automatically.
+  recorded. Files listed via SAFETY-STOP (agent notes) have their
+  bytes discarded immediately, are skipped and counted separately,
+  never retried automatically.
 
 ### 1.2 Ingest CrisisMMD
 
@@ -111,7 +119,8 @@ def map_labels(source: str, record: dict) -> UnifiedLabel: ...
   `data/reports/label_map_samples/` for spot checks — **excluding any
   policy-category images** (violence/gore, nudity/sexual, injured/dead).
   Policy classes are verified by counts and label metadata only, never
-  by sample sheets.
+  by sample sheets. `data/` is git-ignored: the orchestrator verifies
+  by directory listing (orchestrator §6), not by diff.
 
 ### 1.5 Unified manifest and splits
 
@@ -123,17 +132,22 @@ height, dup_group`.
 ```python
 # ml/ivml/data/manifest.py
 def build_manifest(sources: list[pd.DataFrame]) -> pd.DataFrame: ...
-def assign_dup_groups(df: pd.DataFrame, phash_max_distance: int) -> pd.DataFrame: ...
+def assign_dup_groups(df: pd.DataFrame, phash_max_distance: int = 8) -> pd.DataFrame: ...
 def build_splits(df: pd.DataFrame, seed: int, ratios: tuple[float, float, float] = (0.8, 0.1, 0.1)) -> pd.DataFrame: ...
 def write_manifest(df: pd.DataFrame, version: str) -> Path: ...
 ```
+
+`phash_max_distance` defaults to 8; the brief may set another value
+with a decision record.
 
 **Acceptance criteria**
 
 - [ ] Exact duplicates (sha256) removed; near-duplicates share a
   `dup_group` and **no group crosses splits** (test).
 - [ ] Splits stratified by incident id and source.
-- [ ] Same inputs + seed produce a byte-identical manifest (test).
+- [ ] Same inputs + seed produce a logically identical manifest (same
+  rows, columns and values ignoring Parquet file metadata/timestamps;
+  test compares DataFrames, not bytes).
 - [ ] Class-count report written; any class with < 500 training images
   is flagged in a decision record (this flag is what later justifies a
   metric evidence pack under orchestrator §3 — it is data, not failure).
@@ -155,9 +169,13 @@ split rules.
 
 **Acceptance criteria**
 
-- [ ] Policy test split contains ≥ 200 non-violent car-crash images and
-  ≥ 200 people-in-ordinary-clothing images (hard negatives) if
-  available; actual counts reported either way.
+- [ ] Policy test split contains all available hard negatives (target
+  ≥ 200 non-violent car-crash images and ≥ 200
+  people-in-ordinary-clothing images); actual counts reported either
+  way. The criterion passes only at the target counts; below target,
+  with every available hard negative included and counted, the
+  objective is BUILD-ACCEPTED with this criterion listed as open
+  (orchestrator §7) — agents never lower the target themselves.
 - [ ] Policy images are stored in an access-restricted directory and
   never copied into `fixtures/`, sample sheets, eval report thumbnails
   or logs.
@@ -222,7 +240,10 @@ Training, augmentation (Phase 2), face/plate or mask labels (Phase 3).
 Manifests registered, reports written, every acceptance criterion
 recorded as passing in `logs/spec1_log.md` (the boxes above are spec
 source text and are never ticked; see `logs/README.md`), with
-checkpoints for every long job. An objective blocked on a missing input
-stays open (ENV-BLOCKED / NEEDS-USER-APPROVAL, logged in `BLOCKED.md`)
-and keeps the phase incomplete under orchestrator §7. There is no
-partial or deferred completion.
+checkpoints for every long job. An objective blocked on a missing
+input with a working fallback is BUILD-ACCEPTED with its criteria
+listed as open (logged in `BLOCKED.md`); an objective with no fallback
+stays open (ENV-BLOCKED / NEEDS-USER-APPROVAL) and blocks sequencing
+under orchestrator §7. Checkpoint resumptions continue the same
+attempt and never consume a new one while the checkpoint shows
+progress (orchestrator §3).

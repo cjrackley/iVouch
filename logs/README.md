@@ -37,20 +37,30 @@ phase 8 is hardening after the Android-only renumbering).
   `ENV-BLOCKED` with the exact environment error), and ends
   `Status: PROVISIONAL`.
 - Under each entry the orchestrator adds its verdict: `ACCEPTED`,
+  `BUILD-ACCEPTED` (runnable criteria pass; criteria needing a missing
+  real input listed as open with the substitute in use),
   `REJECTED` (failed gates named), `NEEDS-USER-APPROVAL` (question or
-  missing input stated), or `ENV-BLOCKED`, plus wall time from the
-  roster timestamps and the commit hash for accepted work. There is no
-  partial or deferred acceptance verdict: a criterion that could not be
-  run, or that passed only on a mock or provisional substitute, keeps
-  its objective open under one of the statuses above.
+  missing input stated, no mock available), or `ENV-BLOCKED` (no
+  provisional path), plus wall time from the roster timestamps and
+  the commit hash for accepted or build-accepted work. A criterion
+  that could not be run, or that passed only on a mock or provisional
+  substitute, has not passed: it is listed as open under
+  BUILD-ACCEPTED, never folded into ACCEPTED. After each
+  verdict the orchestrator appends a one-line `# Phase status`
+  note (counts + open ids) so the next session rebuilds state from
+  that line plus `docs/BLOCKED.md` (full log only on conflict).
 - The orchestrator appends a `# Spec completion report` only once every
-  objective in the spec is ACCEPTED. The first phase of a block then
-  transitions automatically to the second phase (no manual stop); the
-  second phase's log also gets a `# Block N handoff` paragraph before
-  the orchestrator stops and waits for the next block command
-  (orchestrator §1, §11). If any objective is open, the orchestrator
-  appends a `# Phase status` note listing it and its blocker instead,
-  and the block stops. Only one spec is ever active at a time.
+  objective in the spec is ACCEPTED, and a `# Spec build completion
+  report` once every objective is ACCEPTED or BUILD-ACCEPTED (open
+  criteria and substitutes listed per objective). Either report lets
+  the first phase of a block transition automatically to the second
+  phase (no manual stop); the second phase's log also gets a
+  `# Block N handoff` paragraph before the orchestrator stops and
+  waits for the next block command (orchestrator §1, §11). Only the
+  all-ACCEPTED report supports any launch claim. If any objective is
+  open in another status, the orchestrator appends a `# Phase status`
+  note listing it and its blocker instead, and the block stops. Only
+  one spec is ever active at a time.
 - Acceptance state lives here, not in the specs: agents never edit
   `specs/**`, so a criterion counts as met only when this log records
   it passing. The `- [ ]` boxes in a spec stay unticked forever.

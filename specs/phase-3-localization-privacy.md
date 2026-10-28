@@ -22,11 +22,11 @@ Two model groups:
 
 ## Human inputs (gate)
 
-| Input | If missing |
-|---|---|
-| ~200 incident images with damage-region polygons (eval set) | Report heatmap-only metrics; the mask IoU criterion is un-run, logged in `BLOCKED.md`, and its objective stays open (NEEDS-USER-APPROVAL) — it is not accepted |
-| Approved license-plate training/eval dataset | Plate objective (3.5) stays open (NEEDS-USER-APPROVAL); face blurring proceeds |
-| Approved face-detection eval images | Evaluate on Phase 0 fixtures only for development; the 3.4 criterion is not accepted until the approved eval set exists, and the gap is logged |
+| Input | Expected format | If missing |
+|---|---|---|
+| ~200 incident images with damage-region polygons (eval set) | `data/raw/eval/damage/` + CSV manifest (`image,polygons_json`) | Report heatmap-only metrics; the mask IoU criterion is un-run, logged in `BLOCKED.md`, and its objective stays open (NEEDS-USER-APPROVAL) — it is not accepted |
+| Approved license-plate training/eval dataset | `data/raw/plates/` + CSV manifest (`image,x1,y1,x2,y2,split`) | Plate objective (3.5) stays open (NEEDS-USER-APPROVAL); face blurring proceeds |
+| Approved face-detection eval images | `data/raw/eval/faces/` + CSV manifest (`image,x1,y1,x2,y2`) | Evaluate on Phase 0 fixtures only for development; the 3.4 criterion is not accepted until the approved eval set exists, and the gap is logged |
 
 The agent prepares the images to label (`export_for_labeling` from
 Phase 1) so the user only has to draw. Un-run criteria above follow
@@ -53,14 +53,20 @@ def heatmap_to_boxes(heatmap: np.ndarray, image_size: tuple[int, int], threshold
 **Acceptance criteria**
 
 - [ ] Pointing-game accuracy (heatmap peak inside a ground-truth
-  polygon) ≥ 0.7 on the labeled eval set.
+  polygon) ≥ 0.7 on the labeled eval set (data-unreachable failures
+  use the Phase 2 evidence-pack rule, not a second code attempt).
 - [ ] Box threshold stored in `thresholds.yaml` (`# CALIBRATE: Phase 3`).
 
 ### 3.2 On-device segmentation
 
 Bake-off between EfficientSAM (Ti/S) and MobileSAM, prompted with the
 boxes from 3.1. Pick the smallest model meeting the criteria; record
-the decision.
+the chosen checkpoint IDs, download URLs, licenses and sizes in the
+registry plus a decision record. The brief lists the download hosts
+(HuggingFace/GitHub) in `network_allowed`. If neither candidate meets
+both the IoU and size criteria, return an evidence pack
+(size-unreachable) instead of a second code attempt; changing the size
+budget or lowering IoU needs the user (§9).
 
 ```python
 # ml/ivml/localize/segment.py
@@ -140,16 +146,17 @@ def make_public_derivatives(img: Image.Image) -> PublicDerivatives: ...  # blurr
 **Acceptance criteria**
 
 - [ ] Blur strength scales with box size (pixelate to ≤ 8 blocks across
-  the box, then Gaussian), so faces/plates are unrecoverable by
-  upscaling.
+  the box, then Gaussian). Test asserts block size ≥ box_width/8 and
+  that a face detector finds no face in the blurred box.
 - [ ] Public derivatives contain no EXIF/GPS (test).
 
 ## Agent notes
 
 - SAM 3 (~848M params) is too large for phones; do not use it here.
 - EfficientSAM/MobileSAM encoders often use large inputs (1024 px).
-  Measure Android latency in Phase 6; if too slow, a smaller input
-  size is an acceptable decision-record trade.
+  Phase 3 records encoder input size and desktop latency; Android
+  latency is measured in Phase 6 (a smaller input size there is an
+  acceptable decision-record trade, not a Phase 3 failure).
 - Mask quality matters less than speed. Masks are shown to reviewers
   and used for the rationale, not for automatic decisions.
 - All artifacts resolve through `registry/models.yaml` +
@@ -165,6 +172,9 @@ Server pipeline wiring (Phase 4), Android integration (Phase 6).
 All artifacts exported and registered, test vectors and eval reports
 published, and every acceptance criterion recorded as passing in
 `logs/spec3_log.md` (the boxes above are spec source text and are never
-ticked; see `logs/README.md`). Gaps recorded in `BLOCKED.md` keep their
-objective — and the phase — open under orchestrator §7. There is no
-partial completion.
+ticked; see `logs/README.md`). Gaps recorded in `BLOCKED.md`: an
+objective with a working provisional path (heatmap-only metrics,
+fixture-only face evaluation, a registered provisional segmenter) is
+BUILD-ACCEPTED with its un-run criteria listed as open; an objective
+with no provisional path stays open and blocks sequencing under
+orchestrator §7.

@@ -20,11 +20,21 @@ If you are unsure which role you have, act as a builder: do nothing, and ask.
 
 ## 3. Muse tool mapping (authoritative)
 
-Builders use exactly the core tools in the table below. Any other tool
-name in a brief (`read`, `create-file`, `run-tests`, …) is a drafting
-error: stop and return `NEEDS-BRIEF-FIX`. The orchestrator additionally
-uses the coordination tools listed after the table, for its own work
-only; never put them in a builder brief.
+Builders use exactly `muse.read_file`, `muse.search`, `muse.write_file`,
+`muse.edit_file`, `muse.powershell`, plus `muse.powershell_input` only on
+PowerShell sessions they started themselves, and only to send input to
+or terminate those sessions — never to poll one for completion (a
+finished command's output is delivered on its own; run long work as a
+fresh `muse.powershell` call with a large `yield_time_ms` instead). Any other tool name in a brief (`read`, `create-file`,
+`run-tests`, …) is a drafting error: stop and return `NEEDS-BRIEF-FIX`.
+Builders must not use `muse.subagent_*`, `muse.workflow`,
+`muse.request_user_input`, `muse.write_todos`, `muse.monitor`,
+`muse.web_fetch`, `muse.web_search`, `muse.image_generation`, memory
+tools, `muse.cron_*`, or any skill/MCP tool: those leave no file diff
+for the orchestrator to review, and any use found in review is a gate
+failure. The orchestrator additionally uses the coordination tools
+listed after the table, for its own work only; never put them in a
+builder brief (except `muse.powershell_input` as allowed above).
 
 | Job | Tool |
 |---|---|
@@ -36,22 +46,38 @@ only; never put them in a builder brief.
 | Spawn a builder (inherit model) | `muse.subagent_spawn` (native) |
 | Spawn a builder (assigned model) | `muse.workflow` child agents |
 | Check / wait for a builder | `muse.subagent_status`, `muse.subagent_wait`, `muse.subagent_read_result` |
-| Cancel a builder | `muse.subagent_cancel` |
+| Cancel a native builder | `muse.subagent_cancel` |
+| Cancel a workflow run | `muse.work_stop` (the run's work id) |
+| Read a workflow builder's entry | the `muse.workflow` call's own returned result first; the brief's `entry_file` if that is truncated (never `muse.work_status` summaries) |
 
 Orchestrator-only coordination tools: `muse.write_todos` (phase plan),
-`muse.request_user_input` (§9 decisions in `agents/orchestrator.md`),
-`muse.work_list` / `muse.work_stop` (workflow runs), `muse.monitor`
-(repeated-event streams only, never one-shot long jobs), `muse.powershell_input` (a live PowerShell session).
-Long jobs use resumable checkpoints plus `muse.powershell` with a large `yield_time_ms`.
+`muse.request_user_input` (§9 decisions in `agents/orchestrator.md`; max
+3 questions per call, 2-3 options each — split larger batches),
+`muse.work_list` / `muse.work_status` / `muse.work_stop` (workflow
+runs), `muse.monitor` (repeated-event streams only, never one-shot long
+jobs), `muse.powershell_input` (any live PowerShell session; builders
+may use it only on sessions they started themselves).
+Long jobs use resumable checkpoints plus `muse.powershell` with a large
+`yield_time_ms` (max 300000 = 5 min per wait; chunk longer work so each
+chunk fits, checkpointing between chunks).
 
 Tool-use notes:
 
 - `muse.read_file` returns at most 500 lines by default. Page long files
   with `offset`/`limit`; a truncated read is not a full read.
-- `muse.search` searches contents. To find files by name, use its `glob`
-  parameter (e.g. `**/phase-*.md`) with `output_mode: files_with_matches`.
+- `muse.search` searches contents and always needs a `pattern`. To find
+  files by name, pass `glob` as an array (e.g.
+  `["**/phase-*.md"]`), `pattern: "^"`, `mode: "regex"`, and
+  `output_mode: "files_with_matches"`. A `glob` string (not an array),
+  a missing `pattern`, or a regex without `mode: "regex"` fails or
+  returns nothing; that is a caller error, not proof of no match.
 - `muse.edit_file` needs one exact, unique match. For an existing file,
-  prefer it over `muse.write_file`, which replaces the whole file.
+  prefer it over `muse.write_file`, which replaces the whole file. If
+  the match fails on a file the log says exists, check CRLF vs LF and
+  trailing whitespace before retrying once.
+- `muse.write_file` replaces the whole file. For a large file, write a
+  small first chunk and grow it with `muse.edit_file`; one huge write
+  can exceed a single response and fail to send.
 - `muse.powershell` waits 10 s by default. Pass a larger `yield_time_ms`
   (up to 300000) for builds, tests and downloads whose result you need.
   A process left running when a session ends does not survive it; long
@@ -59,6 +85,12 @@ Tool-use notes:
   processes. If PowerShell itself is unavailable (sandbox not set up),
   nothing that needs a shell — tests, git, commits — can be verified or
   accepted; report it and stop that work as ENV-BLOCKED.
+- Sandbox approvals: if `muse.powershell` reports a command blocked by
+  the sandbox with a `require_escalated` approval path, requesting that
+  one-time approval through the tool is the legitimate approval flow,
+  not a bypass. Bypassing means disabling prompts, using `--yolo` /
+  `--approval-mode never`, or working around a denial through another
+  channel. A denied approval is ENV-BLOCKED with the denial recorded.
 
 Dispatch mechanism matters:
 
@@ -76,10 +108,15 @@ Dispatch mechanism matters:
   way to give a builder a model other than the session's. Tiers are
   allowed only through this path, only with the values in
   `agents/models.yaml`, and only after the verification test in
-  `agents/models.yaml` has passed. A workflow dispatch means writing a
-  `muse.workflow` script (one `host.agent` call per brief, no worktree
-  isolation) whose child prompt is the brief text, and reading the
-  child's returned log entry back from the workflow result. See
+  `agents/models.yaml` has passed. A workflow dispatch means calling
+  `muse.workflow` with a `name` plus a script (one `host.agent` call
+  per brief, no worktree isolation) whose child prompt is the brief
+  text. Read the child's returned log entry from the `muse.workflow`
+  call's own returned result; if it is truncated, read the brief's
+  `entry_file` (orchestrator §2). `muse.work_status` / `muse.work_list`
+  report status only. Before the orchestrator's first workflow call
+  in a session, it reads the `workflow-authoring` skill once if
+  available (orchestrator-only; never in a builder brief). See
   `agents/orchestrator.md` §2 for the procedure.
 - Never use worktree isolation for builders. It creates branches; all
   agents share this one working tree.
@@ -88,7 +125,13 @@ Dispatch mechanism matters:
 removes commands from it. Path locks, the no-delete rule and the no-commit
 rule for builders are therefore **enforced by the orchestrator's pre/post
 diff check, not by the sandbox**. Both role files say this plainly; nobody
-should believe a builder "cannot" delete or commit.
+should believe a builder "cannot" delete or commit. The same applies to
+the coordination tools: a builder inherits `muse.subagent_spawn` and
+`muse.workflow`, so the ban on spawning is contractual too. Any builder
+spawn found in the session's work listings (`muse.work_list` /
+`muse.subagent_status`) during review is an automatic gate failure,
+and work written by a builder's own sub-agents is attributed to that
+builder's brief.
 
 ## 4. Shared guardrails (all agents)
 
@@ -120,7 +163,12 @@ should believe a builder "cannot" delete or commit.
 6. **State lives in files.** At the start of every session, rebuild state
    from `logs/`, `docs/BLOCKED.md` and `docs/HUMAN_INPUTS.md` (whichever
    exist; before Phase 0 completes, `logs/` plus the phase specs are the
-   state). If logs contradict git history, stop and report it. If two logs
+   state). Record a `git status --short` baseline in the phase start
+   log entry: files already dirty before the session are pre-existing
+   user work, are excluded from builder diff gates, and are never
+   committed as builder work; if a brief needs a pre-dirty file, stop
+   and ask the user to commit or set it aside first. If logs contradict
+   git history, stop and report it. If two logs
    disagree, the one whose commit hash exists in `git log` wins; say so.
    If git itself is unavailable in the session, record git state as
    unverifiable and proceed with `logs/` as state; git-dependent gates
@@ -145,12 +193,18 @@ should believe a builder "cannot" delete or commit.
    NCMEC or any outside party.
 10. **Network.** Only hosts named in the brief's `network_allowed`. This
     is a promise the orchestrator reviews, not a sandbox control; never
-    send user data, uploaded images or policy-set images anywhere. One
+    send user data, uploaded images or policy-set images anywhere.
+    `muse.web_fetch` / `muse.web_search` count as network use and must
+    respect the same list (builders must not use them at all; §3). One
     scoped exception: a dataset-download brief (Phase 1) may fetch image
     hosts that appear in that dataset's official, locally held index
     file, download-only, after the host list has been extracted from
     the index into the brief's checkpoint. No other browsing, and no
-    host outside the index.
+    host outside the index. Public package/tooling docs and registries
+    (PyPI, Maven Central, Google Maven, npm, container registries,
+    Playwright browsers) may be listed directly; provider docs and
+    sample-file hosts need prior user approval in `docs/HUMAN_INPUTS.md`
+    before any brief lists them.
 11. **Windows.** Commands run in PowerShell via `muse.powershell`. Run
     project tasks with `python tasks.py <target>`. Android builds use
     `gradlew.bat check` on Windows (`./gradlew check` only on Linux CI).

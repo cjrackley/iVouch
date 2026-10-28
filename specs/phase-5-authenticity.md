@@ -85,9 +85,12 @@ def c2pa_signals(original: bytes) -> C2paSignals: ...
 
 - [ ] Distinguishes valid / invalid / absent using the C2PA sample
   files published by the Content Authenticity Initiative. (Fetching
-  those samples requires the brief to list the host in
-  `network_allowed`; if it cannot, use locally generated signed
-  fixtures and mark this criterion's sample-source gap in `BLOCKED.md`.)
+  those samples requires prior user approval in `HUMAN_INPUTS.md` plus
+  the host in the brief's `network_allowed`; if either is missing, use
+  locally signed fixtures via the pinned `c2pa` package — verify the
+  exact PyPI package name first and record it — or synthetic
+  `C2paSignals` unit fixtures, and mark the sample-source gap in
+  `BLOCKED.md`.)
 - [ ] A manifest declaring a generative-AI tool produces a strong
   `likely-manipulated` reason.
 
@@ -103,8 +106,9 @@ class PlayIntegrityVerifier(AttestationVerifier): ...
 **Acceptance criteria**
 
 - [ ] Replayed nonce, wrong package, wrong cert digest, or a token
-  bound to a different account → `invalid` (tests with recorded/mock
-  tokens).
+  bound to a different account → `invalid`. Tests use the mock token
+  format defined and documented by the builder (mock only; no real
+  Play tokens are recorded here).
 - [ ] Each account–device pairing is recorded; accounts-per-device is
   available to fusion and abuse controls (threshold in
   `thresholds.yaml`).
@@ -117,6 +121,11 @@ class PlayIntegrityVerifier(AttestationVerifier): ...
 # server/ivserver/authenticity/duplicates.py
 def find_duplicates(report_id: str, phash: int, embedding: np.ndarray, k: int = 10) -> list[DuplicateMatch]: ...
 ```
+
+Match rule: pHash Hamming distance ≤ `duplicates.phash_max_distance`
+AND embedding cosine similarity ≥ `duplicates.cosine_min` (both in
+`thresholds.yaml` under `# CALIBRATE: Phase 5` keys named in the
+brief; defaults 8 / 0.92 unless the brief states otherwise).
 
 **Acceptance criteria**
 
@@ -168,7 +177,10 @@ excluding duplicates of the same image and suspended accounts.
   other signals.
 - **v1 (if data available):** classifier on DINOv3 embeddings (+
   optional frequency features) trained on real vs.
-  AI-generated/manipulated images from several generators.
+  AI-generated/manipulated images from several generators. Minimum
+  for v1: ≥ 2 generator families with ≥ 500 images each, plus one
+  held-out family for eval; if only one family exists, the held-out
+  criterion stays open.
 
 ```python
 # server/ivserver/authenticity/forensics.py
@@ -202,8 +214,11 @@ async def weather_at(lat: float, lng: float, when: datetime) -> WeatherObs | Non
 **Acceptance criteria**
 
 - [ ] Prompt and expected JSON schema stored in
-  `server/ivserver/escalation/prompts/` with version; invalid model
-  output is retried once, then recorded as `context_check: None`.
+  `server/ivserver/escalation/prompts/` with version. Schema fields:
+  `caption: str`, `rationale: str`, `context_check:
+  {mismatch: bool, explanation: str} | None`. Invalid model output is
+  retried once, then recorded as `context_check: None`. The builder
+  drafts the prompt text and records it; no browsing for prompts.
 - [ ] Daily escalation budget enforced; when exhausted, cases go to
   human review without escalation.
 - [ ] Context check flags claim/scene mismatches (e.g. claim "flood",
@@ -211,8 +226,24 @@ async def weather_at(lat: float, lng: float, when: datetime) -> WeatherObs | Non
 
 ### 5.9 Fusion
 
-Rule-based, ordered, all thresholds in `thresholds.yaml`. Rules
-produce reasons; the label is the most severe rule outcome.
+Rule-based, ordered, all thresholds in `thresholds.yaml` under
+`# CALIBRATE: Phase 5` keys named in the brief. Rules produce reasons;
+the label is the most severe rule outcome. Implement exactly these
+rules in order (extra rules need a decision record):
+
+1. C2PA manifest declares a generative-AI tool →
+   `likely-manipulated` ("signals observed: AI-tool manifest").
+2. Web match first seen before claimed capture →
+   `likely-manipulated` ("published earlier online").
+3. Internal duplicate from a different place/time →
+   `needs-review` ("previously submitted").
+4. `in_app_camera` + attestation `invalid` → `needs-review`.
+5. `forensic_score` (if not None) above `fusion.forensic_high` →
+   `needs-review`.
+6. `corroboration_count` ≥ `fusion.corrob_min` with no rule 1–5 hit
+   and severity ≠ `severe` (taxonomy value, `config/taxonomy.yaml`)
+   → `likely-real`; `severe` → always `needs-review`.
+7. Default: `needs-review`.
 
 ```python
 # server/ivserver/authenticity/fusion.py
@@ -230,8 +261,11 @@ def fuse(signals: AuthenticitySignals, incident_severity: str, thresholds: Thres
   must never be logged as passing it outright.
 - [ ] High-severity reports are never auto-labeled `likely-real`
   without review.
-- [ ] Reasons use "signals observed" wording; a test fails if any
-  reason contains "proven", "fake" or "real" as a verdict.
+- [ ] Reasons use "signals observed" wording. Test checks the reasons
+  list only (not the label): it fails on case-insensitive standalone
+  words "proven", "fake" or "real" (regex `\b(proven|fake|real)\b`),
+  excluding the quoted label strings `likely-real` / `needs-review` /
+  `likely-manipulated` themselves.
 
 ## Agent notes
 
@@ -239,7 +273,9 @@ def fuse(signals: AuthenticitySignals, incident_severity: str, thresholds: Thres
   lack in-app capture and attestation signals. Don't penalize them as
   manipulated.
 - Weather: Open-Meteo is free for non-commercial use; commercial use
-  needs a paid plan. Keep it behind `weather_at`.
+  needs a paid plan. Dev/test may use the free tier for non-commercial
+  development only; production needs the paid plan (launch-checklist
+  item in Phase 8). Keep it behind `weather_at`.
 - Documentation and sample-file hosts (C2PA samples, provider docs)
   must be user-approved in `docs/HUMAN_INPUTS.md` before any brief
   lists them in `network_allowed`.
@@ -260,5 +296,6 @@ place for missing inputs, eval reports for duplicates, fusion and (if
 trained) forensics, and every acceptance criterion recorded as passing
 in `logs/spec5_log.md` (the boxes above are spec source text and are
 never ticked; see `logs/README.md`). Provisional evidence is reported
-as provisional and keeps its criterion — and the phase — open under
-orchestrator §7. There is no partial completion.
+as provisional: its criterion stays open under the objective's
+BUILD-ACCEPTED verdict (orchestrator §7), the phase may be
+build-complete, and no authenticity claim may rest on it.

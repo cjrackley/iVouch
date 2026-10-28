@@ -48,7 +48,8 @@ failures (orchestrator §7). Credentials are checked only via
   `SELECT … FOR UPDATE SKIP LOCKED` by a separate worker. No Redis.
 - **Originals** encrypted at rest (envelope encryption, key from
   `ORIGINALS_KEY` in dev) and deleted after `RAW_RETENTION_DAYS`
-  (in `thresholds.yaml`) unless under legal hold.
+  (fixed protocol constant in `config/policy.yaml`) unless under
+  legal hold.
 - **Quarantine** uses a separate bucket and key (`QUARANTINE_KEY`),
   readable only by code paths that check `safety_officer`.
 
@@ -190,7 +191,13 @@ Pipeline order:
   → review queue.
 - [ ] With `OnnxModelRunner`, server outputs match Phase 2–3 test
   vectors within tolerance. Missing artifacts make this criterion
-  ENV-BLOCKED (expected path named), not failed.
+  ENV-BLOCKED (expected registry path named), not failed. Artifacts
+  live outside git under `ARTIFACT_ROOT`: if they were accepted in
+  Phases 2–3 but later cleaned, the criterion stays ENV-BLOCKED until
+  the user restores them or authorizes a rebuild; rebuilding a
+  *provisional* artifact (Phases 2–3, `provisional: true`) from its
+  registered recipe is ordinary work in the owning phase, not a spec
+  change. Never silently retrain inside a Phase 4 brief.
 
 ### 4.5 Report retrieval
 
@@ -220,8 +227,9 @@ then age) and `POST /v1/reviews/{id}` (`confirm` / `correct` /
 - [ ] `flag_csam` immediately removes the report from all queues, the
   map and the reviewer's view, and calls
   `quarantine_report(source="reviewer_flag")` (test).
-- [ ] Corrections are queryable for retraining
-  (`export_review_labels()`, used in Phase 7); quarantined items are
+- [ ] Corrections are queryable for retraining via
+  `export_review_labels()` (unit-tested here; Phase 7 calls the same
+  function and tests its own integration there); quarantined items are
   never exported.
 
 ### 4.7 Map endpoint
@@ -242,8 +250,10 @@ def display_point(exact: tuple[float, float], report_id: str, secret: bytes, rad
 - [ ] Excludes non-consented, ungeolocated, policy-rejected,
   quarantined, removed, suspended-account and (by default)
   `likely-manipulated` reports.
-- [ ] p95 < 300 ms at 1M synthetic reports (load script
-  `infra/load/seed_reports.py`; ENV-BLOCKED without a database).
+- [ ] p95 < 300 ms at 1M synthetic reports. The 4.7 brief creates the
+  resumable, checkpointed seeder `infra/load/seed_reports.py` (in
+  `allowed_paths`/`new_files`); ENV-BLOCKED without a database, with
+  the seeder itself still a deliverable.
 - [ ] `truncated: true` when results exceed `limit`.
 
 ### 4.8 CSAM quarantine, legal holds and CyberTipline reports
@@ -277,8 +287,10 @@ class MockCyberTipClient: ...    # writes locally; the only client allowed in de
   `ENV` is `dev`/`test` (test).
 - [ ] The uploading user receives only a generic "upload could not be
   accepted" error.
-- [ ] Quarantine storage is excluded from general backups; its own
-  backup path is documented in Phase 8.
+- [ ] Quarantine storage is excluded from general backups (test
+  checks the Phase 4 backup config/docs for the exclusion); the
+  quarantine-specific backup design itself is a Phase 8 deliverable
+  and is not required here.
 
 ### 4.9 TAKE IT DOWN removal requests
 
@@ -303,19 +315,22 @@ def overdue_takedowns(now: datetime) -> list[TakedownRequest]: ...
   the configured similarity threshold (test with resized/re-encoded
   copies).
 - [ ] Requests open longer than `takedown.alert_after_h` (in
-  `thresholds.yaml`) raise an alert; `overdue_takedowns` is exposed
-  for the Phase 7 dashboard.
+  `thresholds.yaml`) raise an alert; `overdue_takedowns()` returns the
+  list (unit-tested here; Phase 7 dashboard consumption is tested in
+  Phase 7).
 - [ ] Every step (received, validated, executed, notified) is
   audit-logged with timestamps.
 - [ ] The requester is emailed on receipt and on completion.
 
 ### 4.10 Account deletion
 
+No forward dependency: Phase 4 tests the API only. The Phase 7 web
+deletion page calls this same endpoint and is tested in Phase 7.
+
 **Acceptance criteria**
 
-- [ ] `DELETE /v1/account` (and the Phase 7 web page) removes the
-  account, its tokens, device links, reports, media, embeddings and
-  map entries.
+- [ ] `DELETE /v1/account` removes the account, its tokens, device
+  links, reports, media, embeddings and map entries.
 - [ ] Legal-held items are kept (detached from the deleted profile)
   and listed in the `DeletionReport` for audit only.
 - [ ] Audit rows are kept with the account id pseudonymized.
@@ -344,7 +359,8 @@ def purge_expired_originals(now: datetime) -> PurgeReport: ...
 
 **Acceptance criteria**
 
-- [ ] Originals older than `RAW_RETENTION_DAYS` are deleted and their
+- [ ] Originals older than `RAW_RETENTION_DAYS` (from
+  `config/policy.yaml`) are deleted and their
   keys nulled, **except** legal-held objects; frozen-clock test.
 
 ## Agent notes
@@ -383,6 +399,7 @@ Re-run (1) with `OnnxModelRunner` once Phase 2–3 artifacts exist.
 Criteria defined against mocks (the flows above) can pass on mocks.
 Criteria that name a real input — the `OnnxModelRunner` test-vector
 criterion, the 1M-report map latency criterion without a database —
-stay open (ENV-BLOCKED, missing service or expected path named) and
-keep the phase incomplete under orchestrator §7. There is no partial
-completion.
+stay open under their objective's BUILD-ACCEPTED verdict (missing
+service or expected path named, logged in `BLOCKED.md`) and keep the
+phase from launch-completion under orchestrator §7, without blocking
+Phase 5 from building against the stub/provisional path.

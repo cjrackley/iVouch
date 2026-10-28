@@ -152,6 +152,18 @@ git under `ARTIFACT_ROOT` (default `data/artifacts/`), registered with
 sha256 in `registry/models.yaml`; test vectors reference artifact
 versions, never committed weights.
 
+**Provisional mini-models.** The v1 heads are deliberately small —
+linear/MLP heads on a frozen backbone, a TF-IDF text model — so a
+usable first artifact does not need full-scale training. When GPU
+time, dataset scale or a licence sign-off is missing, Phases 2–3 may
+train on the data and compute actually available (a CPU/GPU
+subsample, research-licensed data), register the artifact with
+`provisional: true`, set untrained categories to `unavailable`, and
+record the unmet metric criteria as open. The objective is then
+BUILD-ACCEPTED (orchestrator §7): downstream phases integrate the
+artifact behind the stub fallback, and no metric, launch or pilot
+claim may rest on it until the criteria pass on the real inputs.
+
 ### 3.1–3.6 Notes
 
 - **DINOv3:** self-supervised Meta backbone, frozen; train small heads on
@@ -271,7 +283,9 @@ photos for the false-accusation evaluation (Phase 1/5 specs).
 - Reviewer workflow: two annotators + adjudicator; corrections export
   as new training labels.
 - **Privacy:** originals encrypted at rest, reviewer-only, deleted
-  after `RAW_RETENTION_DAYS`; public images have faces/plates blurred
+  after `RAW_RETENTION_DAYS` (a fixed protocol constant in
+  `config/policy.yaml`, set by the retention decision in §11 — not a
+  calibrated threshold); public images have faces/plates blurred
   and EXIF stripped; public map coordinates are deterministically
   jittered ~100–500 m; reviewers may see exact pins with audit logging.
 - **Policy-rejected images are never stored**; only hash, time,
@@ -383,15 +397,22 @@ Manual gates are per **block of two phases**, not per phase:
 
 Within a block, the second phase starts automatically as soon as the
 first phase's completion report is committed — there is no user prompt
-between them. A phase completes only when every objective is ACCEPTED
-(orchestrator §7): there is no partial or deferred acceptance, so a
-phase with an objective open (ENV-BLOCKED, NEEDS-USER-APPROVAL or
-REJECTED) produces no completion report, no automatic transition and
-no next block. After the second phase, the orchestrator writes a block
-handoff, stops, and waits for the next block command (see
-`agents/orchestrator.md` §1). Dependency checks still apply at every
-phase start: e.g. Phase 4's "real models" criteria need Phases 2–3,
-which the sequential order now guarantees are already accepted.
+between them. A phase is launch-complete only when every objective is
+ACCEPTED (orchestrator §7). A phase whose objectives are all ACCEPTED
+or BUILD-ACCEPTED is BUILD-COMPLETE: its build completion report is
+committed, the automatic transition runs, and the next block may
+start, with every BUILD-ACCEPTED objective's open criteria carried in
+`docs/BLOCKED.md`. BUILD-ACCEPTED never supports a launch, pilot or
+store-submission claim. A phase with an objective open in
+NEEDS-USER-APPROVAL (no mock available), ENV-BLOCKED (no provisional
+path) or REJECTED produces no completion report, no automatic
+transition and no next block. After the second phase, the orchestrator
+writes a block handoff, stops, and waits for the next block command
+(see `agents/orchestrator.md` §1). Dependency checks still apply at
+every phase start: e.g. Phase 4's "real models" criteria need
+Phases 2–3 artifacts, which the sequential order guarantees exist —
+as accepted artifacts, or as registered provisional ones the backend
+integrates behind its stub fallback.
 Builders run one at a time on the shared tree
 (`max_concurrent_builders: 1` in `agents/models.yaml`), counted on the
 orchestrator's roster.
@@ -425,10 +446,12 @@ Phase 0 creates `docs/HUMAN_INPUTS.md` to track these. One rule covers
 all of them: use the spec's mock/fallback to keep building, log it in
 `docs/BLOCKED.md`, and continue with unaffected objectives — but a mock
 never satisfies a criterion that requires the real input. Objectives
-whose acceptance needs a missing input stay open
-(`NEEDS-USER-APPROVAL`); missing infrastructure is `ENV-BLOCKED`; and
-an open objective keeps its whole phase incomplete (orchestrator
-§1, §7). There is no partial acceptance.
+whose acceptance needs a missing input but which have a working
+mock/fallback or provisional artifact are BUILD-ACCEPTED with those
+criteria listed as open; objectives with no mock are
+`NEEDS-USER-APPROVAL`, and missing infrastructure with no provisional
+path is `ENV-BLOCKED` (orchestrator §1, §7). A BUILD-ACCEPTED phase
+may sequence onward; it may never be launched from.
 
 ### 8.2 Conventions for agents (every phase)
 
@@ -450,7 +473,10 @@ an open objective keeps its whole phase incomplete (orchestrator
   state: agents never edit `specs/**`, so a criterion counts as met
   only when the phase log records it passing (§6.2 of the orchestrator
   file via `logs/README.md`). "Definition of done" in every spec means
-  exactly that, never a ticked box.
+  exactly that, never a ticked box. A criterion that can only run on a
+  missing real input is recorded as open under a BUILD-ACCEPTED
+  objective (orchestrator §7): the phase may then be build-complete
+  and sequence onward, but the criterion still has not passed.
   **Lowering any numeric target, including "initial" ones, needs user
   approval** (§9); raising one needs only a decision record. If a
   target is unreachable for data reasons, use the orchestrator §3

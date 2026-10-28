@@ -55,13 +55,19 @@ builders:
 #   tiers_verified.
 #
 # Verification test for workflow tiers (run once, log the outcome):
-#   One muse.workflow run, two children, same non-trivial prompt.
-#   Child A: model/effort omitted. Child B: explicit model ID taken from
-#   Muse's own session/model catalogue (never a guessed alias).
-#   Evidence: configured-model fields in child session records if present,
-#   plus repeated blind capability/latency probes. Model self-reports are
-#   NOT evidence. If only identical runtime IDs are observable, record
-#   "inconclusive", leave tiers_verified false, and keep builders on
-#   inherit. Only the user sets tiers_verified true. This test is exempt
-#   from the one-builder-per-workflow-run rule in orchestrator.md §2:
-#   it is a capability probe, not a builder brief.
+#   One muse.workflow run with a `name` plus a script containing two
+#   sequential host.agent calls on the same small prompt (sequential,
+#   so the one-builder-at-a-time rule is not bent): call A omits
+#   model/effort, call B passes one exact model ID taken from Muse
+#   Code's own session/model catalogue (never a guessed alias).
+#   What this proves: the workflow mechanism accepts a per-call model
+#   override and both children return usable results. What it cannot
+#   prove: which model actually ran. No Muse tool exposes a child
+#   session's model fields, and model self-reports are not evidence,
+#   so blind capability/latency probing is not required and proves
+#   nothing either way. If both calls complete without a validation
+#   error, record "mechanism verified; model identity unobservable"
+#   in logs/spec0_log.md. Only the user then sets tiers_verified true,
+#   accepting that model selection is trusted to the Muse
+#   platform rather than independently observed. Until then every
+#   builder inherits, dispatched natively.
