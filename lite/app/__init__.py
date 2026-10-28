@@ -1,0 +1,1 @@
+"""iVouch Lite application package."""
