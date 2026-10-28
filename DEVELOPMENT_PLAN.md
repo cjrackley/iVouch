@@ -255,7 +255,7 @@ Geo-index: `GEOGRAPHY(Point, 4326)` in PostGIS with a GIST index; bbox + filter 
 
 ## 8. Build Phases
 
-Work is done by coding agents. There is no calendar; phases are ordered by dependency, and each has a spec with objectives, acceptance criteria, functions and agent notes. Agent roles and rules live in [`agents/orchestrator.md`](agents/orchestrator.md) and [`agents/builder.md`](agents/builder.md); per-spec logs in [`logs/`](logs/README.md).
+Work is done by coding agents. There is no calendar; phases are ordered by dependency, and each has a spec with objectives, acceptance criteria, functions and agent notes. Agents start from [`AGENTS.md`](AGENTS.md), which assigns roles and shared guardrails; role rules live in [`agents/orchestrator.md`](agents/orchestrator.md) and [`agents/builder.md`](agents/builder.md); per-spec logs in [`logs/`](logs/README.md).
 
 | Phase | Spec | Why it's a separate phase | Depends on |
 |---|---|---|---|
@@ -289,7 +289,7 @@ Parallel tracks after Phase 0: **ML** (1 → 2 → 3) and **backend** (4). Once 
 
 | Input | Phase |
 |---|---|
-| Exact Meta model IDs for each tier in `agents/models.yaml` | before 0 |
+| Model and effort in `agents/models.yaml` (set: `muse-spark-1.3`, effort `high`) | before 0 |
 | Minimum age decision (default 18) | 0 (non-blocking) |
 | Dataset access (Incidents1M, CrisisMMD) + license approval for intended use | 1 |
 | Violence/gore and adult nudity/sexual-content image sets (licensed or approved; adults only) for the policy classifier | 1 |
@@ -319,10 +319,12 @@ Phase 0 creates `docs/HUMAN_INPUTS.md` to track these.
 - **Contracts first:** `contracts/` and `config/` are the source of truth; changing them requires a version bump, updated examples and a decision record.
 - **Don't stop for reversible decisions:** record them in `docs/decisions/` and continue. Stop only for the user-only decisions in `agents/orchestrator.md` §9, irreversible actions, or missing human inputs with no mock.
 - **Missing human input:** use the mock/fallback named in the phase spec, log it in `docs/BLOCKED.md`, and continue with the rest of the phase.
-- **Acceptance criteria are tests:** an objective is done only when its criteria pass via a command (`make check`, `./gradlew check`, `xcodebuild test`, eval scripts). **Lowering any numeric target, including ones marked "initial", needs the user's approval**; raising one needs only a decision record.
+- **Acceptance criteria are tests:** an objective is done only when its criteria pass via a command (`python tasks.py check`, `./gradlew check`, `xcodebuild test` on the macOS CI runner, eval scripts). **Lowering any numeric target, including ones marked "initial", needs the user's approval**; raising one needs only a decision record.
 - **No magic numbers:** thresholds live in `config/thresholds.yaml`.
 - **No secrets in git;** every env var listed in `.env.example`.
-- **Commits:** only the orchestrator commits, once per accepted objective and once per completion report, with the phase name, a one-paragraph summary and the exact models used. Agents never push.
+- **Commits:** only the orchestrator commits, once per accepted objective and once per completion report, with the phase name, a one-paragraph summary and the model and effort used. Agents never push.
+- **Windows:** the project is developed natively on Windows. Every project task runs through `python tasks.py <target>` (Phase 0), which also runs on the Linux CI runner; nothing assumes bash or `make`.
+- **One model:** every agent runs on the single model and effort in `agents/models.yaml`; there are no model tiers or effort switching.
 - **Licenses:** record the license of every dataset and model; avoid AGPL dependencies (e.g. Ultralytics YOLO) unless approved.
 - **Never collect, download, generate or open material that could be CSAM.** Policy-classifier data comes only from user-approved adult sources. Hash-matching is tested only with provider test hashes or a mock. If anything suspicious appears in any dataset, stop, don't copy or view it, and record it in `docs/BLOCKED.md` for the user.
 - **Never submit real NCMEC reports or contact outside organizations.** Agents build the workflow; humans operate it.

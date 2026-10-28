@@ -12,6 +12,7 @@
 ## Human inputs (gate)
 
 - None required to start.
+- Docker Desktop running on the Windows machine, needed for `python tasks.py up`. If it's missing, the services criteria in 0.1 are blocked; everything else proceeds.
 - **Review later (non-blocking):** the content policy, terms and removal-request notice drafts (objective 0.4), and the minimum age (default 18). Agents proceed with the drafts marked `DRAFT`.
 
 ## Objectives
@@ -23,6 +24,7 @@ Create the monorepo:
 ```text
 iVouch/
   DEVELOPMENT_PLAN.md
+  AGENTS.md               # agent entry point: roles + shared guardrails (locked for builders)
   agents/                 # orchestrator.md, builder.md, models.yaml (locked for builders)
   logs/                   # specN_log.md, append-only
   specs/                  # phase specs (this folder)
@@ -40,12 +42,12 @@ iVouch/
   docs/                   # CONTENT_POLICY.md, TERMS.md, REMOVAL_REQUESTS.md, decisions/, HUMAN_INPUTS.md, BLOCKED.md
 ```
 
-Make targets: `make setup`, `make check` (ruff + mypy + pytest across Python packages), `make up` / `make down` (Docker services), `make fixtures`.
+Task runner: `tasks.py` at the repo root, Python standard library only, with targets `python tasks.py setup`, `python tasks.py check` (ruff + mypy + pytest across Python packages), `python tasks.py up` / `down` (Docker services), `python tasks.py fixtures`. It must work in Windows PowerShell (the development machine) and on the Linux CI runner. No bash scripts or Makefiles.
 
 **Acceptance criteria**
-- [ ] `make setup && make check` passes on a clean clone.
-- [ ] `make up` starts PostgreSQL (with `postgis` and `vector` extensions available) and MinIO; a healthcheck script exits 0.
-- [ ] CI workflow (`infra/ci/` or `.github/workflows/`) runs `make check` on push.
+- [ ] `python tasks.py setup` then `python tasks.py check` passes on a clean clone, on Windows and in CI.
+- [ ] `python tasks.py up` starts PostgreSQL (with `postgis` and `vector` extensions available) and MinIO; a healthcheck script exits 0.
+- [ ] CI workflow (`infra/ci/` or `.github/workflows/`) runs `python tasks.py check` on push.
 - [ ] `.gitignore` excludes `data/`, model weights, `.env`; `.env.example` lists every env var used.
 
 ### 0.2 API and data contracts
@@ -177,7 +179,7 @@ Create:
 
 ### 0.8 Synthetic fixtures
 
-`make fixtures` generates small synthetic images with Pillow (solid scenes, text, simple shapes) and variants: no EXIF, EXIF with GPS, rotated EXIF orientation, re-encoded JPEG at quality 50, HEIC copy, PNG. These are for unit tests only (not model quality).
+`python tasks.py fixtures` generates small synthetic images with Pillow (solid scenes, text, simple shapes) and variants: no EXIF, EXIF with GPS, rotated EXIF orientation, re-encoded JPEG at quality 50, HEIC copy, PNG. These are for unit tests only (not model quality).
 
 **Acceptance criteria**
 - [ ] Fixtures are deterministic (same bytes for the same seed).
@@ -218,4 +220,4 @@ Any model training, endpoints beyond stubs, mobile code.
 
 ## Definition of done
 
-All acceptance boxes checked, `make check` green in CI, `docs/HUMAN_INPUTS.md` complete.
+All acceptance boxes checked, `python tasks.py check` green on Windows and in CI, `docs/HUMAN_INPUTS.md` complete.

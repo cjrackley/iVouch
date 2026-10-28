@@ -259,4 +259,4 @@ Real attestation verification, duplicates for authenticity, C2PA, reverse search
 
 ## Definition of done
 
-`make up && make check` green; end-to-end tests passing with `StubModelRunner` and mock providers: (1) register → verify → accept policy → upload fixture → complete report → review action; (2) upload a mock-matched fixture → quarantine → officer prepares mock CyberTip report; (3) takedown request → execute → target and copies removed. Re-run (1) with `OnnxModelRunner` once Phase 2–3 artifacts exist.
+`python tasks.py up` and `python tasks.py check` green; end-to-end tests passing with `StubModelRunner` and mock providers: (1) register → verify → accept policy → upload fixture → complete report → review action; (2) upload a mock-matched fixture → quarantine → officer prepares mock CyberTip report; (3) takedown request → execute → target and copies removed. Re-run (1) with `OnnxModelRunner` once Phase 2–3 artifacts exist.
