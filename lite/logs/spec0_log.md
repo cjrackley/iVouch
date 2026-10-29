@@ -168,5 +168,62 @@ README/DEMO will document the .venv setup.
 Commit: (recorded after commit)
 
 # Spec status: 3/4 ACCEPTED; open: 0.4
+- Commit 8a8c88c recorded for 0.3 (10 files, working tree clean after).
+
+### Task spec-0 0.4 implement, attempt 1 (continued)
+- Objective: local CLIP model smoke check
+- Touched: lite/app/checks/clip_model.py (fixed, not restarted: prior run's loader kept; unbounded snapshot_download/revision calls wrapped in daemon-thread timeouts with retries + progress logging; added artifacts_summary for bytes/file-count/licence; first inference bounded)
+- Created: lite/tests/test_model_smoke.py (prior run's file kept; extended to print/record file sizes + licence)
+- Tests: python -m pytest lite/tests -q -- 20 passed (19 prior + 1 smoke)
+- Test integrity: no locked-path edits (lite/config.yaml, lite/app/config.py, prior tests untouched); failures fixed in code. Two stall-driven retunes, both in allowed paths only.
+- Dependencies: none added (torch 2.15.0+cpu, transformers 5.21.0 preinstalled by prior run; huggingface-hub 2.3.0 transient). No AGPL/GPL.
+- Resources: resumed 20:34, done ~21:31 (about 57 min of 90 budget); CPU fallback (torch.cuda.is_available() False, config requests cuda)
+- Checkpoint: lite/work/checkpoints/spec-0-0.4.md (updated within 10 min of resume and throughout)
+- Mocks/blocked: none used. Proxy flakiness on huggingface.co file paths observed (API 200 in ~7 s; per-file GET/HEAD timed out repeatedly); git-ls-remote fallback ruled out (sandbox schannel SEC_E_NO_CREDENTIALS). Strategy that worked: fail-fast bounded attempts (240 s x 3, 8 workers, etag_timeout 60) with resume.
+- Smoke result: model=openai/clip-vit-base-patch32 rev=3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268 device=cpu fallback=True load_s=32.2 label=none confidence=0.577 files=27 bytes=1819549697 licence=unknown (snapshot README frontmatter states no licence; not guessed). Weights under lite/data/artifacts/ (git-ignored, never committed).
+- Notes: pytest-of-camer/ untracked dir is pytest-generated tmp clutter, left per no-delete rule. lite/logs/spec0_log.md dirty but not mine.
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit; first run dispatched
+2026-10-28T19:05:41-04:00 stalled ~47 min on an unbounded
+snapshot_download with no update and was stopped; continuation
+dispatched 20:34:09, entry landed ~21:31, smoke green).
+Gates: (1) diff clean — lite/app/checks/clip_model.py and
+lite/tests/test_model_smoke.py new, plus orchestrator log; weights
+(~1.8 GB, 27 files) under git-ignored lite/data/artifacts/ only;
+pytest junk removed by orchestrator. (2) tests run in-session:
+20 passed in 14.5 s (model cached). (3) integrity: new test file,
+real asserts (weights present, label in prompts, confidence in
+[0,1], device/fallback consistent). (4) honesty: no mocks; smoke ran
+against the real pinned model on CPU with fallback logged; licence
+honestly unknown. (5) log entry complete. No threshold re-typed in
+code (only the module's own retry-timeout constants). Orchestrator
+note: torch/transformers were installed into the session interpreter
+by the orchestrator (pinned versions, env setup only) after the
+sandbox user could not write site-packages.
+Commit: (recorded after commit)
+
+# Spec status: 4/4 ACCEPTED; open: none
+
+# Spec completion report — Lite spec 0 (foundations)
+- Objectives: 0.1 layout+tooling (097988c), 0.2 configuration (b05de87),
+  0.3 synthetic fixtures (8a8c88c), 0.4 CLIP smoke (commit below).
+  All ACCEPTED; no mocks in use; Python 3.11.1 throughout (permitted).
+- Files: lite/app/{__init__,cli,config,server/__init__,checks/{__init__,clip_model}}.py,
+  lite/config.yaml, lite/requirements.txt (8 pins), lite/tests/
+  (test_layout, test_config, test_fixtures, test_model_smoke +
+  fixtures/ incl. generate.py and mock_hashes.txt).
+- Tests: python -m pytest lite/tests -q -> 20 passed, run in-session.
+- Retries/stops: 0.3 first run stopped (quiet, no checkpoint) +
+  continuation ACCEPTED; 0.4 first run stopped (unbounded-download
+  stall) + continuation ACCEPTED. No objective consumed more than its
+  attempt structure allows (continuations, not new attempts).
+- Env notes: session interpreter carries pytest/pyyaml/pillow/piexif/
+  torch/transformers at pinned versions (orchestrator-provisioned);
+  fresh checkouts should use project-local .venv (to be documented in
+  spec-4 README/DEMO). Model weights (~1.8 GB) in ignored
+  lite/data/artifacts/; CLIP licence unknown (honestly recorded).
+- Wall time: 15:29 dispatch to ~21:35 completion.
 
 <!-- END-OF-LOG -->
