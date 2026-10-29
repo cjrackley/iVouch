@@ -112,5 +112,42 @@ retries stalled; transitive numpy 1.24.2 -> 2.4.6 noted.
 Commit: (recorded after commit)
 
 # Spec status: 3/5 ACCEPTED; open: 1.4, 1.5
+- Commit 6cc92ae recorded for 1.3 (3 files, working tree clean after).
+
+### Task 1.4 implement, attempt 1
+- Objective: incident/severity CLIP zero-shot plus claim similarity (spec-1 1.4)
+- Touched: none (new files only)
+- Created: lite/app/checks/clip_checks.py, lite/tests/test_clip_checks.py
+- Tests: python -m pytest lite/tests -q -- 52 passed (44 prior green, 8 new: 6 stubbed plus 2 slow real-model, run unskipped)
+- Test integrity: no locked-path edits; no existing-test edits; real-path failures fixed in code (transformers 5.21.0 get_image_features/get_text_features return BaseModelOutputWithPooling, so the live encoder reads pooler_output)
+- Dependencies: none added (torch 2.15.0+cpu, transformers 5.21.0, Pillow pre-existing; CLIP snapshot openai/clip-vit-base-patch32, MIT licence, cached under lite/data/artifacts/)
+- Resources: about 25 min of 60 budget; CPU fallback (cuda unavailable), no GPU used
+- Checkpoint: n/a (short task)
+- Mocks/blocked: FanStub/ClaimStub encoders for unit tests (spec allows); PytestUnknownMarkWarning for the slow mark (no marker registration in repo; tests still run unskipped). Note: lite/logs/spec1_log.md shows modified but was not touched by this brief; pytest-of-camer/ is a pytest tmp artifact from this run, left in place per the no-delete rule.
+- Observed top-labels per fixture, real model, demo observations only, no accuracy claim (thresholds are uncalibrated demo values):
+  - solid_no_exif.jpg: incident=flood 0.294, severity=severe 0.371, claim_sim=0.192
+  - text_no_exif.jpg: incident=flood 0.470, severity=severe 0.627, claim_sim=0.188
+  - shapes_gps.jpg: incident=none 0.677, severity=minor 0.605, claim_sim=0.244
+  - shapes_editor.jpg: incident=none 0.677, severity=minor 0.605, claim_sim=0.244
+  - shapes_q50.jpg: incident=none 0.527, severity=minor 0.610, claim_sim=0.249
+  - shapes_basic.png: incident=none 0.577, severity=minor 0.602, claim_sim=0.253
+  - Cross-check: incident top-label agrees with clip_model.classify_image on all six fixtures. Synthetic-fixture outputs say nothing about real-incident accuracy.
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit; wall time ~25 min).
+Gates: (1) diff clean — 2 new files only plus orchestrator log;
+agents/* modifications are pre-existing user workflow edits, excluded;
+pytest junk removed by orchestrator. (2) tests run in-session:
+52 passed in 24 s (slow real-model tests ran unskipped). (3)
+integrity: new test file, stubbed shapes + real-path cross-check,
+labels from loader, no skips. (4) honesty: observed fixture
+top-labels logged as demo observations, cross-checked, no accuracy
+claim; stub encoders are the spec-allowed unit surface. (5) log entry
+complete. CLIP licence recorded as MIT (model card; corrects 0.4's
+honest-unknown).
+Commit: (recorded after commit)
+
+# Spec status: 4/5 ACCEPTED; open: 1.5
 
 <!-- END-OF-LOG -->
