@@ -53,5 +53,32 @@ verified, so no gate impact.
 Commit: (recorded after commit)
 
 # Spec status: 1/5 ACCEPTED; open: 1.2, 1.3, 1.4, 1.5
+- Commit 564c1ea recorded for 1.1 (3 files, working tree clean after).
+
+### Task 1.2 implement, attempt 1
+- Objective: provenance-lite flags (spec-1 objective 1.2)
+- Touched: n/a (no existing files edited)
+- Created: lite/app/checks/provenance.py, lite/tests/test_provenance.py
+- Tests: python -m pytest lite/tests -q -- 37 passed (27 prior green, 10 new)
+- Test integrity: no locked-path edits; no existing tests touched; EXIF synthesized in-test with piexif/Pillow, no new fixtures committed; fixtures read-only
+- Dependencies: none added (Pillow/piexif already pinned in lite/requirements.txt); licences n/a
+- Resources: ~5 min of 60 budget; CPU only, no GPU used
+- Checkpoint: n/a (short task)
+- Mocks/blocked: none
+- Signals: implausibly-old cutoff defined as module constant EARLIEST_PLAUSIBLE_CAPTURE_TIME = 2000-01-01 UTC (no config key names it; no config key invented). Missing EXIF yields neutral flags (time_plausible True) and the module emits no verdict. Note: git status shows pre-existing M lite/logs/spec1_log.md (not touched by this brief) and untracked pytest-of-camer/ (not created by this brief's edits; left alone).
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit; wall time ~5 min).
+Gates: (1) diff clean — 2 new files only plus orchestrator log; no
+locked-path edits, small files; pytest junk removed by orchestrator.
+(2) tests run in-session: 37 passed. (3) integrity: new test file,
+real asserts (all EXIF variants incl. PNG/q50, synthesized
+future-time case, no new fixtures committed). (4) honesty: no mocks;
+flags only, module emits no verdict and missing EXIF stays neutral
+per spec. (5) log entry complete. Implausibly-old cutoff as module
+constant (no config key invented) is the brief-sanctioned choice.
+Commit: (recorded after commit)
+
+# Spec status: 2/5 ACCEPTED; open: 1.3, 1.4, 1.5
 
 <!-- END-OF-LOG -->
