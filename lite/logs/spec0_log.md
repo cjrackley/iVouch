@@ -202,7 +202,7 @@ code (only the module's own retry-timeout constants). Orchestrator
 note: torch/transformers were installed into the session interpreter
 by the orchestrator (pinned versions, env setup only) after the
 sandbox user could not write site-packages.
-Commit: (recorded after commit)
+Commit: 4594f55 (3 files: clip_model.py, test_model_smoke.py, log).
 
 # Spec status: 4/4 ACCEPTED; open: none
 
