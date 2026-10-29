@@ -51,4 +51,36 @@ Commit: (recorded after commit)
 
 # Spec status: 1/5 ACCEPTED; open: 2.2, 2.3, 2.4, 2.5
 
+### Task 2.2 implement, attempt 1
+- Objective: accounts + auth (register / verify-email / login / account / delete)
+- Touched: none (all new files)
+- Created: lite/app/server/auth.py, lite/app/server/mail.py, lite/app/server/api.py, lite/tests/test_auth.py
+- Tests: python -m pytest lite/tests -q -- 79 passed (71 prior + 8 new)
+- Test integrity: no locked-path edits; committed tests use TestClient with tmp SQLite + tmp mail/uploads dirs only; no test edits existing files
+- Dependencies: none added (used pinned fastapi==0.162.0, argon2-cffi==25.1.0, PyJWT==2.15.1, httpx==0.28.1, python-multipart==0.0.32; no AGPL/GPL in this set)
+- Resources: within 60-min budget; CPU only, no GPU used
+- Checkpoint: lite/work/checkpoints/spec-2-2.2.md (complete, no resume needed)
+- Mocks/blocked: none (no mocks allowed/needed). Sandbox blocks sockets, so TestClient runs used one legitimate require_escalated approval per AGENTS.md 3; tmp dirs kept under scratch dir probe_0r7yhz_p/ -- orchestrator please remove that dir (builders cannot delete). lite/agents/*.md + lite/requirements.txt were dirty before this session (pre-existing, not mine).
+- Signals: none
+- Design notes: verify tokens are stateless signed JWTs (no change to committed db.py schema); register always answers 200 with one generic body (new / known-email / under-age indistinguishable, under-age stores nothing and sends no mail, DOB never stored -- only age_confirmed_at, min_age + jwt_access_minutes via loader); login answers 401 with one body for unknown email vs wrong password (plus dummy-verify timing); login succeeds pre-verification and the verified-only gate lives on upload (2.3 answers 403); DELETE removes account + cascaded reports + <uploads_dir>/<account_id>/ tree and keeps one account_deletion audit event; JWT secret from LITE_JWT_SECRET with a clearly marked dev-only fallback; api.py exposes create_app(db/mail/uploads) + module app, one router per area for later objectives
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit).
+Gates: (1) diff clean — 4 new files only plus orchestrator log and
+orchestrator-owned requirements pins; user agents/* edits excluded;
+builder scratch dirs removed by orchestrator. (2) tests run
+in-session: 79 passed — with one environment note: the default
+sandbox denies socket creation (WinError 10013), which TestClient
+needs, so the suite was gated via the sanctioned one-time
+require_escalated approval path per AGENTS.md 3 (same mechanism as
+all prior provisioned installs). (3) integrity: new test file, tmp
+dirs only, env-var JWT secret, generic responses asserted.
+(4) honesty: no mocks; DOB never stored, only age_confirmed_at.
+(5) log entry complete. Orchestrator-pinned server deps
+(argon2-cffi/PyJWT/httpx/multipart, all permissive licences) ride
+in this commit since requirements.txt is builder-locked.
+Commit: (recorded after commit)
+
+# Spec status: 2/5 ACCEPTED; open: 2.3, 2.4, 2.5
+
 <!-- END-OF-LOG -->
