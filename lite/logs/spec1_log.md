@@ -150,4 +150,64 @@ Commit: (recorded after commit)
 
 # Spec status: 4/5 ACCEPTED; open: 1.5
 
+### Task 1.5 implement (swarm role A), attempt 1
+- Objective: Fusion-lite (lite-spec-1 objective 1.5, implement half of swarm trial)
+- Touched: none (new file only)
+- Created: lite/app/checks/fusion.py
+- Tests: python -m pytest lite/tests -q -- 52 passed (lite/tests/test_fusion.py not yet landed from concurrent builder, so this run is the full suite minus the fusion tests; contract probe inline: likely-real default, mock_match early-return, previously_submitted, low_confidence, likely-manipulated, and multi-reason accumulation all match spec)
+- Test integrity: no locked-path edits; no test files written or edited
+- Dependencies: none added
+- Resources: well within 60 min budget; CPU only, no GPU used
+- Checkpoint: n/a (single-file task; brief checkpoint path not written -- outside allowed_paths)
+- Mocks/blocked: none; waiting on concurrent test builder for lite/tests/test_fusion.py final gate
+- Signals: none
+- Status: PROVISIONAL
+
+### Task lite-spec-1 1.5 tests, attempt 1
+- Objective: Fusion-lite tests (swarm role C, test-specialist)
+- Touched: none (no edits to existing files)
+- Created: lite/tests/test_fusion.py (12 tests)
+- Tests: python -m pytest lite/tests/test_fusion.py -q -- 12 passed; python -m pytest lite/tests -q -- 64 passed, 2 warnings (pre-existing unknown `slow` mark in locked test_clip_checks.py; not touched)
+- Test integrity: no locked-path edits; thresholds read via load_config() only, never re-typed; AllChecks built in-test from plain dicts/datetimes/real Provenance; no fixtures added; implementation (lite/app/checks/fusion.py) written concurrently by the paired builder and imported only, never stubbed or inlined
+- Dependencies: none added
+- Resources: ~5 min of 60 budget; fusion.py absent at start, present after one bounded 240 s wait chunk
+- Checkpoint: lite/work/checkpoints/spec-1-1.5-tests.md (complete, no resume needed)
+- Mocks/blocked: none
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (joint 1.5): ACCEPTED (both native, inherit; dispatched
+together ~16:16, both entries landed ~16:17-16:22).
+Gates: (1) diff clean — exactly one new file per builder
+(fusion.py implementer, test_fusion.py test-specialist), so
+attribution holds by path despite concurrency; user agents/* edits
+excluded; pytest junk removed by orchestrator. (2) tests run
+in-session: 64 passed. (3) integrity: both sides converged on the
+dictated contract first try (imports resolve, 12/12 rule tests
+green); thresholds via loader; no-certainty regex test present.
+(4) honesty: no mocks; reasons use "signals observed" wording only.
+(5) both entries complete.
+Swarm trial verdict: SUCCESS — first-try convergence in ~5 min per
+side with zero reconciliation. Disjoint single-file briefs + a
+dictated shared contract preserve gateability. Approved pattern for
+similarly separable objectives; serial remains the fallback.
+Commit: (recorded after commit)
+
+# Spec status: 5/5 ACCEPTED; open: none
+
+# Spec completion report — Lite spec 1 (image checks)
+- Objectives: 1.1 files+mock-gate (564c1ea), 1.2 provenance (6854348),
+  1.3 duplicates (6cc92ae), 1.4 CLIP checks (7c445c3), 1.5 fusion-lite
+  (joint, commit below). All ACCEPTED; the only mock is the
+  spec-defined mock safety gate (not real screening). Thresholds
+  remain uncalibrated demo values; fixture top-labels and distances
+  logged as observed numbers only, no accuracy claim.
+- Files: lite/app/checks/{files,provenance,duplicates,clip_checks,
+  fusion}.py (+clip_model.py from spec-0); lite/tests/test_{files,
+  provenance,duplicates,clip_checks,fusion}.py.
+- Tests: python -m pytest lite/tests -q -> 64 passed, run in-session.
+- Retries: none needed in spec-1 (1.3 overran budget on proxy stalls
+  but passed gates on attempt 1). Swarm trial on 1.5: success.
+- Wall time: 21:31 (1.1 dispatch) to ~16:25 next day (1.5 verdict).
+
 <!-- END-OF-LOG -->
