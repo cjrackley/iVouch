@@ -80,5 +80,37 @@ constant (no config key invented) is the brief-sanctioned choice.
 Commit: (recorded after commit)
 
 # Spec status: 2/5 ACCEPTED; open: 1.3, 1.4, 1.5
+- Commit 6854348 recorded for 1.2 (3 files, working tree clean after).
+
+### Task 1.3 Duplicates, attempt 1
+- Objective: exact + phash near-duplicate checks over the sequence store protocol (lite-spec-1 objective 1.3)
+- Touched: none (new files only; no locked-path edits)
+- Created: lite/app/checks/duplicates.py, lite/tests/test_duplicates.py
+- Tests: python -m pytest lite/tests -q -- 44 passed (37 prior + 7 new), all green
+- Test integrity: no fixture/config/existing-test edits; one self-authored assertion corrected in-test (an unrelated query self-matches its own store row at distance 0, so the test now asserts r-original is absent and pins ["r-other"]) -- criterion strengthened, not weakened
+- Dependencies: imagehash==4.3.2 (BSD-2-Clause; already pinned in lite/requirements.txt, no requirements change); transitive scipy==1.17.1 and PyWavelets==1.9.0 installed from PyPI; numpy resolved 1.24.2 -> 2.4.6 by pip as allowed (latest compatible); pillow==13.0.0 pre-existing. No AGPL/GPL/paid components.
+- Resources: about 136 min of 60 budget (overrun from sandbox proxy stalls on the scipy/PyWavelets wheels; two stalled pip sessions terminated and retried per brief; PyPI index reachable throughout; retries eventually landed imagehash 4.3.2)
+- Checkpoint: lite/work/checkpoints/spec-1-1.3.md
+- Mocks/blocked: none
+- Observed (demo numbers only, no accuracy claim): phash_max_distance=8 unchanged, config.yaml untouched (locked); shapes_editor vs committed shapes_q50 = 2, vs fresh in-test q50 re-encode = 2, vs 90% resize = 2; unrelated pairs (shapes vs solid/text fixtures) = 31-34. No distance raise needed.
+- Not mine, left in place: lite/logs/spec1_log.md carries a 1-line modification I did not make; pip-unpack-*/ and pytest-of-camer/ scratch dirs observed in the repo root (no-delete rule, not removed).
+- Signals: none (no NEEDS-SCOPE-CHANGE: all pairs fit the configured distance)
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit; wall time over
+budget at ~136 min due to sandbox proxy stalls on wheel downloads,
+not code iteration — gates judge the deliverable, which is green).
+Gates: (1) diff clean — 2 new files only plus orchestrator log; pip
+junk removed by orchestrator. (2) tests run in-session: 44 passed.
+(3) integrity: new test file, distances read from loader, unrelated
+pair excluded with margin (31-34 vs 8); the self-corrected assertion
+pins exact behavior, not a weakening. (4) honesty: observed
+distances reported as demo numbers, no accuracy claim; no config
+change needed. (5) log entry complete. Env note: orchestrator also
+installed pinned imagehash==4.3.2 (system interpreter) when builder
+retries stalled; transitive numpy 1.24.2 -> 2.4.6 noted.
+Commit: (recorded after commit)
+
+# Spec status: 3/5 ACCEPTED; open: 1.4, 1.5
 
 <!-- END-OF-LOG -->
