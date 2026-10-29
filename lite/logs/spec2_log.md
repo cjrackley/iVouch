@@ -82,5 +82,58 @@ in this commit since requirements.txt is builder-locked.
 Commit: (recorded after commit)
 
 # Spec status: 2/5 ACCEPTED; open: 2.3, 2.4, 2.5
+- Commit bddcac7 recorded for 2.2 (6 files incl. requirements pins, working tree clean after).
+- Roster: 2.3 upload+pipeline swarm pair dispatched 2026-10-29T18:34:29-04:00 (implementer + test-specialist, disjoint files, dictated contract).
+
+### Task 2.3 implement, attempt 1
+- Objective: synchronous upload + processing pipeline (spec-2 2.3, implement half)
+- Touched: lite/app/server/api.py (edited: create_app gains optional clip_encoder kwarg stored as app.state.clip_encoder plus upload_router include; new POST /analyze route only -- no auth-route changes)
+- Created: lite/app/server/pipeline.py (new: process_upload/analyze_bytes/build_response/stored_response/persist_accepted_upload/prior_report_rows/load_mock_hashes/sha256_hex/phash_hex/upload_extension/write_upload_file/record_mock_rejection)
+- Tests: python -m pytest lite/tests -q -- 88 passed (79 prior + 9 new from co-worker test_upload.py); must_pass subset (ignore test_upload.py) also 79 passed. Self-probe script (throwaway, outside repo) verified happy-path exact keys, idempotent replay, 422x4 with nothing stored, 403 unverified, mock-gate body/audit/no-file, 415/413 -- ALL PASSED.
+- Test integrity: no test files written or edited; no locked-path edits; one real bug found by probe + co-worker (missing `fusion` import in pipeline.py) fixed in code, not in tests
+- Dependencies: none added (stdlib + PIL/imagehash/fastapi already pinned)
+- Resources: ~55 min of 60 budget; CPU only, stub encoder for verification, no GPU used
+- Checkpoint: lite/work/checkpoints/spec-2-2.3-impl.md
+- Mocks/blocked: mock hash gate is the spec'd MockHashMatcher (benign synthetic fixtures only); live CLIP path left to 2.5 per brief. Sandbox blocks sockets (WinError 10013), so TestClient runs used require_escalated approvals (suite + probe). Co-worker test_upload.py landed mid-task; pytest-of-camer/ junk dir at repo root is test fallout for the orchestrator to remove (builders cannot delete).
+- Signals: none
+- Design notes: no job queue -- deliberate Lite simplification, recorded in pipeline.py module comment. Order enforced: location/consent 422 (stores nothing) -> verified gate 403 -> idempotent replay -> 413 oversize -> 415 type -> mock gate (200 generic body + demo_notice, one mock_rejection audit event) -> provenance/duplicates/CLIP/claim/fuse -> report + check_results + file at <uploads_dir>/<account_id>/<report_id>.<ext>. Response keys exactly report_id/incident_probs/severity_probs/top_severity/verdict/reasons/confidence/needs_review. Check modules called as module attributes for instrumented order tests; encoder= seam defaults to live. File field accepts photo/file/image aliases; claim accepts claim_text/claim. Finding for 2.4/2.5: every committed image fixture is mock-listed, so happy-path tests must generate novel bytes.
+- Status: PROVISIONAL
+
+### Task 2.3 tests, attempt 1
+- Objective: upload and processing pipeline tests (swarm role C)
+- Touched: none (test-only brief)
+- Created: lite/tests/test_upload.py
+- Tests: python -m pytest lite/tests/test_upload.py -q -- 5 passed, 4 failed
+  (all 4 fail inside implementer code: NameError "fusion" not defined at
+  lite/app/server/pipeline.py:179; locked path for this brief, fix is role A's)
+- Test integrity: no locked-path edits; no code under test mocked
+  (spies wrap and call through); stub CLIP encoder via create_app
+  clip_encoder seam only; full suite not green due to the above bug
+- Dependencies: none added
+- Resources: ~55 min of 60 budget; CPU only, no GPU used
+- Checkpoint: lite/work/checkpoints/spec-2-2.3-tests.md
+- Mocks/blocked: FanStub encoder (live path is 2.5's); one require_escalated
+  socket approval used and working for TestClient
+- Signals: none (implementer bug reported, not a stop signal from this brief)
+- Status: PROVISIONAL
+
+Verdict (joint 2.3): ACCEPTED (both native, inherit; paired dispatch
+18:34, entries landed ~19:29-19:35 after orchestrator-relayed fix).
+Gates: (1) diff clean — pipeline.py new + api.py route-only edit +
+test_upload.py new + orchestrator log; user agents/* excluded; junk
+removed. (2) tests run in-session (escalated path for sockets):
+88 passed. (3) integrity: test file uses novel noise bytes for happy
+path (all fixtures mock-listed), call-through spies for order,
+exact-keys + nothing-stored asserts; the missing-`fusion`-import bug
+the pair surfaced was fixed in code. (4) honesty: stub encoder is the
+brief-sanctioned fast surface, live path deferred to 2.5; mock gate
+is the spec-defined mock. (5) both entries complete. Swarm note:
+cross-builder bug catch worked — test side failed loudly on
+implementer code, orchestrator relayed the one-line fix, no
+re-dispatch needed. Mock rejection returns 200 + generic body (spec
+pins the body, not the status).
+Commit: (recorded after commit)
+
+# Spec status: 3/5 ACCEPTED; open: 2.4, 2.5
 
 <!-- END-OF-LOG -->

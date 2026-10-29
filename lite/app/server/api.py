@@ -16,18 +16,30 @@ importing this module touches no disk.
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, field_validator
 
 from lite.app.config import load_config
 from lite.app.server import auth as auth_helpers
+from lite.app.server import pipeline as upload_pipeline
 from lite.app.server.db import (
     connect,
     create_account,
@@ -96,13 +108,15 @@ class LoginRequest(BaseModel):
 
 
 def create_app(
-    db_path=None, mail_dir=None, uploads_dir=None
+    db_path=None, mail_dir=None, uploads_dir=None, clip_encoder=None
 ) -> FastAPI:
     """Build the Lite FastAPI app.
 
     Explicit paths are for tests; defaults are the real Lite
     locations. Nothing is created on disk until a request arrives
     (each connection ensures the idempotent schema first).
+    ``clip_encoder`` is the optional CLIP test hook for the upload
+    pipeline (default live); tests pass a stub for speed.
     """
     app = FastAPI(title="iVouch Lite")
     app.state.db_path = str(db_path) if db_path is not None else str(
@@ -118,7 +132,9 @@ def create_app(
         if uploads_dir is not None
         else str(_lite_dir() / "data" / "uploads")
     )
+    app.state.clip_encoder = clip_encoder
     app.include_router(auth_router)
+    app.include_router(upload_router)
     return app
 
 
@@ -326,6 +342,96 @@ def delete_account(request: Request, account: dict = Depends(get_current_account
             detail="Not authenticated.",
         )
     return {"message": "Account deleted."}
+
+
+upload_router = APIRouter(tags=["upload"])
+
+
+@upload_router.post("/analyze")
+def analyze(
+    request: Request,
+    account: dict = Depends(get_current_account),
+    photo: UploadFile | None = File(None),
+    file: UploadFile | None = File(None),
+    image: UploadFile | None = File(None),
+    claim_text: str | None = Form(None),
+    claim: str | None = Form(None),
+    client_report_id: str | None = Form(None),
+    location_lat: float | None = Form(None),
+    location_lng: float | None = Form(None),
+    location_consented: bool | None = Form(None),
+    location_source: str | None = Form(None),
+):
+    """Accept one photo upload and run the synchronous check pipeline.
+
+    Order: (1) location/consent validation first -- missing
+    coordinates, a missing consent flag, or a false flag answers 422
+    and stores nothing (no files, rows, or audit events); (2) the
+    verified-email gate answers 403; the rest (413/415 file sanity,
+    the mock hash gate, provenance -> duplicates -> CLIP -> claim ->
+    fusion) is delegated to the pipeline module. A completed upload
+    returns 200 with the finished report.
+    """
+    upload = photo if photo is not None else (
+        file if file is not None else image
+    )
+    # (1) Location and consent first: 422 stores nothing.
+    if (
+        location_lat is None
+        or location_lng is None
+        or not math.isfinite(location_lat)
+        or not math.isfinite(location_lng)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="location_lat and location_lng are required.",
+        )
+    if location_consented is not True:
+        raise HTTPException(
+            status_code=422,
+            detail="location_consented must be true.",
+        )
+    if location_source not in ("browser", "manual_pin"):
+        raise HTTPException(
+            status_code=422,
+            detail="location_source must be 'browser' or 'manual_pin'.",
+        )
+    if client_report_id is None or not client_report_id.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="client_report_id is required.",
+        )
+    # (2) Verified-email gate.
+    if not account.get("email_verified"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required before upload.",
+        )
+    if upload is None:
+        raise HTTPException(
+            status_code=422,
+            detail="photo is required.",
+        )
+    raw = upload.file.read()
+    text = claim_text if claim_text is not None else claim
+    claim_value = text.strip() if text and text.strip() else None
+    encoder = getattr(request.app.state, "clip_encoder", None)
+    with _connection(request) as conn:
+        status_code, body = upload_pipeline.process_upload(
+            conn=conn,
+            account_id=account["id"],
+            raw=raw,
+            claim_text=claim_value,
+            client_report_id=client_report_id.strip(),
+            location_lat=location_lat,
+            location_lng=location_lng,
+            location_source=location_source,
+            uploads_dir=request.app.state.uploads_dir,
+            encoder=encoder,
+        )
+    if status_code != 200:
+        raise HTTPException(status_code=status_code, detail=body["detail"])
+    return body
 
 
 # Module-level app for serving (uvicorn lite.app.server.api:app).
