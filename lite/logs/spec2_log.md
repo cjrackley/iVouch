@@ -185,5 +185,59 @@ held by disjoint paths.
 Commit: (recorded after commit)
 
 # Spec status: 4/5 ACCEPTED; open: 2.5
+- Commit 53a1fd9 recorded for 2.4 (4 files, working tree clean after).
+
+### Task 2.5 implement, attempt 1
+- Objective: end-to-end smoke (stubbed in-suite test + one live-model run)
+- Touched: none (no app code changes)
+- Created: lite/tests/test_e2e_smoke.py
+- Tests: python -m pytest lite/tests -q -- 95 passed (94 prior green + 1 new)
+- Test integrity: no locked-path edits; new test only; novel noise JPEG generated in-memory (no fixture used, all fixtures mock-listed); stub via create_app clip_encoder seam; failures fixed in code (none -- new test passed after one sandbox approval, no test edits)
+- Dependencies: none added
+- Resources: approx 30 min of 90 budget; one legitimate require_escalated approval for TestClient sockets (sandbox blocks socketpair/listen with WinError 10013; pre-existing TestClient tests fail identically without it)
+- Checkpoint: n/a (short task; entry only)
+- Mocks/blocked: Part A uses FanStub encoder (deterministic stub, allowed by brief); Part B live openai/clip-vit-base-patch32 from lite/data/artifacts/ (cached, no download)
+- Part B live run (throwaway script outside repo, deleted after; tmp dirs under system temp):
+  - device=cpu (cpu_fallback=True; torch.cuda.is_available()=False; config requested cuda, fell back to CPU)
+  - model openai/clip-vit-base-patch32 rev 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268, load 0.5 s (cached weights)
+  - app_create 5.59 s, register 0.08 s, verify 0.01 s, login 0.12 s
+  - upload response 0.72 s (includes live CLIP inference on novel 64x64 noise JPEG via POST /analyze with location+consent)
+  - report read-back 0.013 s via GET /reports/{id}
+  - verdict label=needs-review, reasons=['claim_mismatch'], confidence=0.8373, needs_review=True
+  - incident_probs top car_crash 0.8373; severity top minor 0.6328
+  - No accuracy claim is made (single novel-noise run).
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit).
+Gates: (1) diff clean — 1 new test file only plus orchestrator log;
+user agents/* excluded. (2) tests run in-session (escalated path
+for sockets): 95 passed. (3) integrity: new test only, novel noise
+bytes, stub seam, endpoint values cross-checked against direct
+spec-1 calls. (4) honesty: Part B recorded as a single observed
+live run with device/timings/verdict and explicit no-accuracy-claim;
+suite coverage rests on the stubbed Part A per spec. (5) log entry
+complete.
+Commit: (recorded after commit)
+
+# Spec status: 5/5 ACCEPTED; open: none
+
+# Spec completion report — Lite spec 2 (server)
+- Objectives: 2.1 schema+stores+CLI (273ad20), 2.2 accounts+auth
+  (bddcac7, incl. orchestrator-pinned server deps), 2.3
+  upload+pipeline (2c786ba, swarm pair), 2.4 retrieval (53a1fd9,
+  swarm pair), 2.5 e2e smoke (commit below). All ACCEPTED; no mocks
+  beyond the spec-defined mock safety gate and brief-sanctioned
+  stubbed encoders (live path observed once in 2.5 Part B).
+- Files: lite/app/server/{db,auth,mail,api,pipeline,geo}.py,
+  expanded cli.py, lite/tests/test_{db,auth,upload,retrieval,
+  e2e_smoke}.py.
+- Tests: python -m pytest lite/tests -q -> 95 passed, run in-session
+  (escalated path for TestClient sockets; default sandbox denies
+  socket creation — environment note for all future TestClient
+  gates).
+- Retries: none (2.3 needed an orchestrator-relayed one-line import
+  fix inside attempt 1; no re-dispatch).
+- Wall time: 16:22 (2.1 dispatch) to ~20:40 (2.5 verdict).
 
 <!-- END-OF-LOG -->
