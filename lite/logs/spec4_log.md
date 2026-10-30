@@ -103,5 +103,9 @@ beyond sanctioned stub. (5) log entry complete.
 Commit: (recorded after commit)
 
 # Spec status: 3/4 ACCEPTED; open: 4.4
+- Commit 41d7efb recorded for 4.3 (5 files, working tree clean after).
+- NIGHT STOP: no builder running, tree clean, next is 4.4 demo pack
+  (README run section + DEMO.md brief, then orchestrator
+  fresh-checkout manual run) followed by spec-5 map.
 
 <!-- END-OF-LOG -->
