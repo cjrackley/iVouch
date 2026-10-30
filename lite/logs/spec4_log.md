@@ -159,6 +159,38 @@ path asserts. (4) honesty: no mocks; fixes the live-observed
 lite/lite doubling. (5) log entry complete. Only mail.py was
 truly wrong; db/api/pipeline routed through the helper for
 consistency.
-Commit: (recorded after commit)
+Commit: 01475a0 (6 files: datadirs fix + test_datadirs.py + log).
+
+# Spec completion report — Lite spec 4 (review + hardening)
+- Objectives: 4.1 review pages + 4.2 actions API (4876974, swarm
+  pair), 4.3 abuse/safety (41d7efb), 4.4 demo pack (b37ff5a) +
+  datadirs fix (01475a0) + this orchestrator fresh-checkout run.
+  All ACCEPTED.
+- Files: review.html/review_detail.html/audit.html, api+pages
+  review routes + actions + caps + limiter + audit listing,
+  test_{review_pages,review_actions,abuse,datadirs}.py, README run
+  section, DEMO.md.
+- Tests: 157 passed, run in-session (escalated path for sockets).
+- Orchestrator fresh-checkout manual run (4.4 first criterion),
+  from a committed-files-only copy (git clone blocked by sandbox
+  safe.directory ownership — needs the AGENTS.md setup step on a
+  real machine; venv pip bootstrap + venv _ctypes DLL load also
+  sandbox-blocked, so the run used the session interpreter against
+  the fresh tree — all three logged as environment notes, none a
+  project defect):
+  - Model fetch via the app's own loader into empty artifacts:
+    28 files / ~1.82 GB in ~19 s (proxy behaved).
+  - Served `python -m lite.app.server --port 8001` from the fresh
+    tree (unsandboxed path for sockets): signup page 200,
+    register 200, console-mail verify + login, live-CLIP upload
+    200 (verdict needs-review, confidence 0.536), result page
+    with verdict visible — MANUAL RUN OK in 1.3 s (model warm).
+  - The run SURFACED the lite/lite data-dir defect (mail landed
+    in fresh/lite/lite/data/mail); fixed (01475a0), re-verified:
+    mail now lands in fresh/lite/data/mail and the full journey
+    passes. No accuracy claim (single noise-image run).
+  - Server stopped after; temp tree left in session sandbox
+    (auto-cleaned at session end).
+- Wall time: spec-4 start to ~14:10 (manual run close).
 
 <!-- END-OF-LOG -->
