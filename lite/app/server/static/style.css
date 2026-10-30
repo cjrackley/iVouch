@@ -1,0 +1,54 @@
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  max-width: 42rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  color: #222;
+  background: #fff;
+  line-height: 1.5;
+}
+
+nav a {
+  margin-right: 1rem;
+}
+
+form {
+  margin: 1rem 0;
+}
+
+label {
+  display: block;
+  margin: 0.75rem 0;
+}
+
+input[type="email"],
+input[type="password"],
+input[type="text"],
+input[type="date"] {
+  display: block;
+  width: 100%;
+  max-width: 24rem;
+  padding: 0.4rem;
+  margin-top: 0.25rem;
+  border: 1px solid #666;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+}
+
+.error {
+  border: 1px solid #900;
+  padding: 0.5rem;
+}
+
+.info {
+  border: 1px solid #060;
+  padding: 0.5rem;
+}
+
+.notice {
+  border: 1px solid #555;
+  padding: 0.5rem;
+}

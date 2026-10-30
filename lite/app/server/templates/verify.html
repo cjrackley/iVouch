@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Verify email</h1>
+{% if message %}<p class="info">{{ message }}</p>{% endif %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p>Paste the token from your verification email below.</p>
+<form method="get" action="/verify">
+<label>Token
+<input type="text" name="token" required>
+</label>
+<label>Email address (optional)
+<input type="email" name="email" value="{{ email }}" autocomplete="email">
+</label>
+<button type="submit">Verify</button>
+</form>
+{% endblock %}

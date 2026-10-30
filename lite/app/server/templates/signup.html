@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Create account</h1>
+<p class="notice">Demo build. Safety screening in Lite is a mock, not a
+production check.</p>
+<p class="notice">Data use: when you upload, other logged-in demo users
+can see your photo, claim text, approximate map location, and verdict.
+Your email address, exact coordinates, and file paths are never
+shared.</p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if info %}<p class="info">{{ info }}</p>{% endif %}
+<form method="post" action="/signup">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Email address
+<input type="email" name="email" required autocomplete="email">
+</label>
+<label>Password (8 or more characters)
+<input type="password" name="password" required minlength="8" autocomplete="new-password">
+</label>
+<label>Date of birth
+<input type="date" name="date_of_birth" required>
+</label>
+<p>You must be {{ min_age }} or older to create an account.</p>
+<button type="submit">Create account</button>
+</form>
+<p>Already have an account? <a href="/login">Log in</a>.</p>
+{% endblock %}

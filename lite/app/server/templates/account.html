@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Your account</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p>Email address: {{ email }}</p>
+{% if verified %}
+<p>Email status: verified.</p>
+{% else %}
+<p>Email status: not verified.</p>
+<form method="post" action="/verify-resend">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<button type="submit">Send a new verification email</button>
+</form>
+{% endif %}
+<h2>Delete account</h2>
+<p>Deleting your account removes your reports and uploaded files. This
+cannot be undone.</p>
+<form method="post" action="/account/delete">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>
+<input type="checkbox" name="confirm" value="yes" required>
+Yes, delete my account and my uploads.
+</label>
+<button type="submit">Delete my account</button>
+</form>
+{% endblock %}

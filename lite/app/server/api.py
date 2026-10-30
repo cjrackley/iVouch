@@ -136,6 +136,12 @@ def create_app(
         else str(_lite_dir() / "data" / "uploads")
     )
     app.state.clip_encoder = clip_encoder
+    from lite.app.server import pages as pages_module
+
+    # Pages first: the HTML GET /account (browser navigation) is reached
+    # before the JSON GET /account below; non-HTML clients are delegated
+    # back to the spec-2 implementation inside the page handler.
+    app.include_router(pages_module.pages_router)
     app.include_router(auth_router)
     app.include_router(upload_router)
     app.include_router(retrieval_router)
