@@ -20,6 +20,9 @@ shared.</p>
 </label>
 <fieldset>
 <legend>Location picker</legend>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+<div id="location_map" style="height: 240px; margin-bottom: 8px;"></div>
+<button type="button" id="use_location">Use my location</button>
 <label>Latitude
 <input type="number" name="location_lat" id="location_lat" step="any" min="-90" max="90" required>
 </label>
@@ -28,25 +31,90 @@ shared.</p>
 </label>
 <label>
 <input type="checkbox" name="location_consented" id="location_consented" value="true" required>
-I agree the approximate map location of this upload may be shown to
-other logged-in demo users.
+Your photo, claim text, approximate map location, and verdict will be visible to other logged-in demo users. Your email and exact location are never shared.
 </label>
 </fieldset>
 <button type="submit" id="upload_submit" disabled>Upload</button>
 </form>
 <script>
 (function () {
+  var MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+  var MAPLIBRE_JS = "https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js";
   var lat = document.getElementById("location_lat");
   var lng = document.getElementById("location_lng");
   var consent = document.getElementById("location_consented");
   var submit = document.getElementById("upload_submit");
+  var geoButton = document.getElementById("use_location");
+  var mapEl = document.getElementById("location_map");
+  var map = null;
+  var marker = null;
   function update() {
     var placed = lat.value !== "" && lng.value !== "";
     submit.disabled = !(placed && consent.checked);
   }
+  function setPin(latVal, lngVal) {
+    lat.value = latVal;
+    lng.value = lngVal;
+    if (map !== null) {
+      if (marker === null) {
+        marker = new maplibregl.Marker().setLngLat([lngVal, latVal]).addTo(map);
+      } else {
+        marker.setLngLat([lngVal, latVal]);
+      }
+    }
+    update();
+  }
+  function clearPin() {
+    lat.value = "";
+    lng.value = "";
+    if (marker !== null) {
+      marker.remove();
+      marker = null;
+    }
+    update();
+  }
+  function initMap() {
+    if (typeof maplibregl === "undefined" || mapEl === null) {
+      return;
+    }
+    map = new maplibregl.Map({
+      container: "location_map",
+      style: MAP_STYLE,
+      center: [0, 20],
+      zoom: 1
+    });
+    map.addControl(new maplibregl.NavigationControl());
+    map.on("click", function (e) {
+      setPin(e.lngLat.lat, e.lngLat.lng);
+    });
+  }
   lat.addEventListener("input", update);
   lng.addEventListener("input", update);
-  consent.addEventListener("change", update);
+  consent.addEventListener("change", function () {
+    if (!consent.checked) {
+      clearPin();
+    } else {
+      update();
+    }
+  });
+  geoButton.addEventListener("click", function () {
+    if (!navigator.geolocation) {
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var plat = pos.coords.latitude;
+      var plng = pos.coords.longitude;
+      setPin(plat, plng);
+      if (map !== null) {
+        map.setCenter([plng, plat]);
+        map.setZoom(12);
+      }
+    });
+  });
+  var lib = document.createElement("script");
+  lib.src = MAPLIBRE_JS;
+  lib.onload = initMap;
+  document.head.appendChild(lib);
   update();
 })();
 </script>
