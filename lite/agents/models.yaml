@@ -1,24 +1,36 @@
 # Lite dispatch defaults. Inheritance only; no per-builder models.
-# Changing anything here is a user decision (orchestrator section 5).
+# Changing anything here is a user decision (orchestrator section 5). [7]
 
 dispatch:
-  default: native            # muse.subagent_spawn; inherits session model
-  max_concurrent_builders: 1 # one shared tree; serial briefs only
+  default: native            # muse.subagent_spawn; inherits session model [7]
+  max_concurrent_builders: 3 # was 1; now intra-spec parallel, inter-spec still 1
+  max_concurrent_orchestrator_subagents: 3
+  inter_spec_concurrency: 1  # Sequential only — spec 1 of 6 [1]
 
 session:
-  model_id: null             # unobserved; recorded as "unobserved" in logs
+  model_id: null             # unobserved; recorded as "unobserved" in logs [7]
   effort: null
 
-# Lite never uses workflow dispatch tiers. All builders inherit.
+# Lite never uses workflow dispatch tiers. All builders inherit. [7]
 tiers_verified: false
 builders:
   tests:     { model: null, effort: null }
   implement: { model: null, effort: null }
+  swarm:
+    max_per_spec: 3
+    roles: [implementer, web-ui, test-specialist]
+
+orchestrator_subagents:
+  planner:     { role: brief-validator, may_spawn: false, may_commit: false }
+  decomposer:  { role: task-splitter, may_spawn: true }
+  verifier:    { role: test-gate, command: "python -m pytest lite/tests -q" } # the one test gate for all specs [1]
+  integrator:  { role: merge-log-commit, owns: ["lite/logs/", "lite/work/checkpoints/"] }
 
 budget:
-  total_usd_cap: 200         # agent/API tokens for all Lite work
-  agent_soft_cap_usd: 140    # freeze features beyond this; tests/docs only
-  external_api_usd: 0        # local-only; paid calls need a user decision
+  total_usd_cap: 200         # agent/API tokens for all Lite work [7]
+  agent_soft_cap_usd: 140    # freeze features beyond this; tests/docs only [7]
+  external_api_usd: 0        # local-only; paid calls need a user decision [7]
 
 # Change log (user decisions only):
-# - Lite created: native inherit dispatch, $200 cap, $0 external APIs.
+# - Lite created: native inherit dispatch, $200 cap, $0 external APIs. [7]
+# - Update: enable intra-spec swarm (3) + orchestrator sub-agents; keep sequential specs.

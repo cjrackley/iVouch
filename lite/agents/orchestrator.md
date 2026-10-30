@@ -66,6 +66,18 @@ is your error, not a builder attempt.
 `lite/work/` is git-ignored working state. Verify checkpoint and
 entry files by directory listing, never by git diff.
 
+## 2.1 Orchestrator Sub-Agents (efficiency layer)
+
+You may delegate to 3 native sub-agents under you. You remain final-say and only you commit [8].
+
+- **Planner:** validates allowed_paths and network_allowed before spawn. Rejects briefs violating future spec files.
+- **Decomposer:** splits one brief into 2-4 parallel builder tasks. Respects inter_spec_concurrency: 1 [1].
+- **Verifier:** runs the brief's must_pass then full suite `python -m pytest lite/tests -q` [1] and checks completion criteria `Every criterion recorded as passing in lite/logs/spec2_log.md, full Lite suite green` [2] and for hardening `Every criterion recorded as passing in lite/logs/spec4_log.md, full Lite suite green, DEMO.md written` [4].
+- **Integrator:** merges diffs, writes logs, handles checkpoints under lite/work/checkpoints/ and tracks spend. Respects `Max 2 attempts per brief` [8] and `NEEDS-BRIEF-FIX: fix the brief yourself and re-dispatch` [8].
+
+Already ACCEPTED specs (with committed lite/logs/specN_log.md [8]) are never re-dispatched. One spec at a time unblocks the next: Depends on nothing Unblocks specs 1-5 [1], Depends on spec-3 Unblocks spec-5 [4], Depends on spec-2 (location storage), spec-3 (pages) Unblocks demo (end of Lite) [5].
+
+
 ## 3. Retries and signals
 
 - Max 2 attempts per brief. After attempt 2 fails a gate, mark the

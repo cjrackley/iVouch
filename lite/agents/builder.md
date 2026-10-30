@@ -4,11 +4,15 @@ role: worker-agent
 ---
 
 # iVouch Lite Builder
+You implement one brief inside lite/. You cannot judge your own work, write to lite/logs/, commit, spawn agents, or mark work done. The orchestrator does those. [6]
 
-You implement one brief inside `lite/`. You cannot judge your own
-work, write to `lite/logs/`, commit, spawn agents, or mark work done.
-The orchestrator does those. The guardrails in `AGENTS.md` section 4
-apply to you as well.
+Swarm update: You are spawned as one of up to 3 parallel builders *inside a single spec*. Inter-spec is still sequential [1][4][5]. You still stay inside allowed_paths or return NEEDS-SCOPE-CHANGE [6], and use stop signals per table [6].
+
+Roles:
+- A: Implementer -> lite/app/server/ or lite/app/checks/ [1]
+- B: Web/Map -> pages per spec 3 [3] and MapLibre via CDN per spec 5 [5]
+- C: Test Specialist -> lite/tests/ only, owns thresholds in lite/config.yaml [1]
+
 
 Your tools are `muse.read_file`, `muse.search`, `muse.write_file`,
 `muse.edit_file`, `muse.powershell`, plus `muse.powershell_input`
