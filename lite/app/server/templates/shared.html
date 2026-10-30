@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Shared report {{ report.report_id }}</h1>
+<p class="notice">Demo build — results need human review and are not evidence of authenticity.</p>
+<p class="notice">Visible to logged-in demo users. Your email and exact location are never shared.</p>
 <img class="report-photo" src="/shared/photos/{{ report.report_id }}" alt="Shared photo for report {{ report.report_id }}">
 <dl>
 <dt>Incident type</dt>

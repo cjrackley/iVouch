@@ -105,5 +105,48 @@ lite.app.server` -> http://127.0.0.1:8000.
 Commit: (recorded after commit)
 
 # Spec status: 2/3 ACCEPTED; open: 3.3
+- Commit 4a8552e recorded for 3.2 (12 files incl. uvicorn pin, working tree clean after).
+- Roster: 3.3 wording pass dispatched 2026-10-29T21:02:00-04:00 (single implement brief).
+
+### Task 3.3 wording pass, attempt 1
+- Objective: 3.3 Wording and honesty pass (spec-3-web.md)
+- Touched: lite/app/server/templates/report.html (edited: +2 plain-text notice lines after the needs-review banner), lite/app/server/templates/shared.html (edited: +same 2 lines after the H1)
+- Created: lite/tests/test_wording.py (6 tests: certainty-word grep over direct Jinja renders of every template with all 3 verdict labels, account-template real-word check, exact demo/data-use lines on report+shared sources and renders, exact 3-label set from fusion.py/pages.py/templates with report.verdict rendering, no-script static grep with upload single-script exception, TestClient no-JS server-side render check incl. mock-gate rejection flow)
+- Tests: python -m pytest lite/tests -q -- 125 passed (119 prior + 6 new)
+- Test integrity: no locked-path edits (fusion.py, pages.py, api.py, fixtures read-only); no existing test edited; failures fixed in own code (upload-page script assertion); no mocks (direct Jinja renders plus TestClient with no clip encoder; rejection flow stops at the mock hash gate before any encoder use)
+- Dependencies: none added
+- Resources: ~30 min of 60 budget; CPU only, no GPU used
+- Checkpoint: lite/work/checkpoints/spec-3-3.3.md
+- Mocks/blocked: none. Sandbox blocked sockets at first (WinError 10013 on every TestClient test) -- used the one legitimate require_escalated approval per AGENTS.md 3; full suite green after that
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit).
+Gates: (1) diff clean — 2 template line-additions + 1 new test
+file + orchestrator log; user agents/* excluded; pytest junk
+removed. (2) tests run in-session (escalated path for sockets):
+125 passed. (3) integrity: 6 new tests map 1:1 to the 3.3
+criteria (grep, account exemption, exact lines, label set,
+no-script, server-side render); self-bug fixed in own test.
+(4) honesty: exact demo/data-use lines asserted verbatim; no
+mocks. (5) log entry complete.
+Commit: (recorded after commit)
+
+# Spec status: 3/3 ACCEPTED; open: none
+
+# Spec completion report — Lite spec 3 (web UI)
+- Objectives: 3.1 account pages (4b1efa3, incl. jinja2/markupsafe
+  pins), 3.2 upload+result pages (4a8552e, incl. uvicorn pin +
+  photo-cookie fix attempt 2), 3.3 wording pass (commit below).
+  All ACCEPTED; no mocks beyond sanctioned stub encoders.
+- Files: lite/app/server/{pages,__main__}.py, templates/ (11),
+  static/style.css, lite/tests/test_{pages,upload_pages,
+  photo_cookie,wording}.py.
+- Tests: python -m pytest lite/tests -q -> 125 passed, run
+  in-session (escalated path for sockets).
+- Retries: one (3.2 photo-cookie transport fix, attempt 2, green).
+- Serve: `python -m lite.app.server` -> http://127.0.0.1:8000
+  (for spec-4 README/DEMO).
+- Wall time: 20:39 (3.1 dispatch) to ~21:10 (3.3 verdict).
 
 <!-- END-OF-LOG -->
