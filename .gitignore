@@ -74,6 +74,14 @@ test-results/
 # ---- Agent working state (checkpoints are resumable local state, never committed) ----
 work/
 
+# ---- Local install and test fallout ----
+pip-build-tracker-*/
+pip-ephem-wheel-cache-*/
+pip-install-*/
+tmp*/
+pytest-of-camer/
+torchinductor_*/
+
 # ---- OS and editors ----
 .DS_Store
 Thumbs.db

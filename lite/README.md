@@ -75,8 +75,9 @@ spec's completion report is committed (see `agents/orchestrator.md`).
 
 ## Budget guardrails ($200 total agent/API spend)
 
-- Agent tokens: hard cap near $140 for all Lite work. One builder at a
-  time, small briefs, at most one retry per brief (see agents files).
+- Agent tokens: hard cap near $140 for all Lite work. Up to 3 parallel
+  builders inside one spec, specs still sequential, at most one retry
+  per brief (see agents files).
 - External APIs: $0 by design. Local models and mocks only. Any future
   paid call needs a user decision first and a hard cap in code.
 - Keep roughly $30 unspent as buffer. If spend approaches the cap,
@@ -90,3 +91,10 @@ spec's completion report is committed (see `agents/orchestrator.md`).
 - `logs/README.md` — log format. Logs live in `lite/logs/`.
 
 Nothing outside `lite/` is edited by Lite work.
+
+## Test environment
+
+- Page and server tests use TestClient, which needs socket access.
+- The default sandbox blocks sockets. Symptom is WinError 10013.
+- Gate those tests through the sanctioned one-time escalation path.
+- Socket-free checks run without it.
