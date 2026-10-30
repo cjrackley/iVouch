@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Shared report {{ report.report_id }}</h1>
+<img class="report-photo" src="/shared/photos/{{ report.report_id }}" alt="Shared photo for report {{ report.report_id }}">
+<dl>
+<dt>Incident type</dt>
+<dd>{{ top_incident }} (probability {{ top_incident_prob }})</dd>
+<dt>Severity</dt>
+<dd>{{ report.top_severity }}</dd>
+<dt>Assessment</dt>
+<dd>{{ report.verdict }}</dd>
+<dt>Confidence</dt>
+<dd>{{ report.confidence }}</dd>
+<dt>Approximate map location</dt>
+<dd>{{ report.display_lat }}, {{ report.display_lng }}</dd>
+{% if report.claim_text %}
+<dt>Claim text</dt>
+<dd>{{ report.claim_text }}</dd>
+{% endif %}
+<dt>Submitted</dt>
+<dd>{{ report.created_at }}</dd>
+</dl>
+<h2>Signals observed</h2>
+<ul>
+{% for reason in report.reasons %}
+<li>{{ reason }}</li>
+{% endfor %}
+</ul>
+{% endblock %}

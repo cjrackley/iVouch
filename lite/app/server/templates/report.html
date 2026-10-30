@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Report {{ report.report_id }}</h1>
+{% if report.needs_review %}
+<p class="banner">This report needs human review.</p>
+{% endif %}
+<img class="report-photo" src="{{ report.photo_url }}" alt="Uploaded photo for report {{ report.report_id }}">
+<dl>
+<dt>Incident type</dt>
+<dd>{{ top_incident }} (probability {{ top_incident_prob }})</dd>
+<dt>Severity</dt>
+<dd>{{ report.top_severity }}</dd>
+<dt>Assessment</dt>
+<dd>{{ report.verdict }}</dd>
+<dt>Confidence</dt>
+<dd>{{ report.confidence }}</dd>
+<dt>Approximate map location</dt>
+<dd>{{ report.display_lat }}, {{ report.display_lng }}</dd>
+{% if report.claim_text %}
+<dt>Claim text</dt>
+<dd>{{ report.claim_text }}</dd>
+{% endif %}
+<dt>Submitted</dt>
+<dd>{{ report.created_at }}</dd>
+</dl>
+<h2>Incident probabilities</h2>
+<ul>
+{% for name, prob in report.incident_probs.items() %}
+<li>{{ name }}: {{ prob }}</li>
+{% endfor %}
+</ul>
+<h2>Severity probabilities</h2>
+<ul>
+{% for name, prob in report.severity_probs.items() %}
+<li>{{ name }}: {{ prob }}</li>
+{% endfor %}
+</ul>
+<h2>Signals observed</h2>
+<ul>
+{% for reason in report.reasons %}
+<li>{{ reason }}</li>
+{% endfor %}
+</ul>
+<p><a href="/reports">Back to your reports</a></p>
+{% endblock %}

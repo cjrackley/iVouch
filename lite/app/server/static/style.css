@@ -24,7 +24,8 @@ label {
 input[type="email"],
 input[type="password"],
 input[type="text"],
-input[type="date"] {
+input[type="date"],
+input[type="number"] {
   display: block;
   width: 100%;
   max-width: 24rem;
@@ -51,4 +52,26 @@ button {
 .notice {
   border: 1px solid #555;
   padding: 0.5rem;
+}
+
+.banner {
+  border: 2px solid #555;
+  padding: 0.5rem;
+  font-weight: bold;
+}
+
+img.report-photo {
+  max-width: 100%;
+  height: auto;
+}
+
+fieldset {
+  border: 1px solid #666;
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+
+dt {
+  font-weight: bold;
+  margin-top: 0.5rem;
 }

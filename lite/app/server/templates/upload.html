@@ -2,8 +2,54 @@
 {% block content %}
 <h1>Upload</h1>
 {% if verified %}
-<p>The upload form is not part of this page yet. It arrives with the
-next update.</p>
+<p class="notice">Demo content notice: Lite checks file properties, provenance signals, duplicates, and similarity scores. Safety screening in Lite is a mock, not a production check. Not for emergencies: call your local emergency number.</p>
+<p class="notice">Data use: uploads (photo, claim text, approximate map
+location, verdict) are visible to other logged-in demo users. Your
+email address, exact coordinates, and file paths are never
+shared.</p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/upload" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="client_report_id" value="{{ client_report_id }}">
+<input type="hidden" name="location_source" value="manual_pin">
+<label>Photo
+<input type="file" name="photo" accept="image/png,image/jpeg" required>
+</label>
+<label>Claim text (optional)
+<input type="text" name="claim_text" value="">
+</label>
+<fieldset>
+<legend>Location picker</legend>
+<label>Latitude
+<input type="number" name="location_lat" id="location_lat" step="any" min="-90" max="90" required>
+</label>
+<label>Longitude
+<input type="number" name="location_lng" id="location_lng" step="any" min="-180" max="180" required>
+</label>
+<label>
+<input type="checkbox" name="location_consented" id="location_consented" value="true" required>
+I agree the approximate map location of this upload may be shown to
+other logged-in demo users.
+</label>
+</fieldset>
+<button type="submit" id="upload_submit" disabled>Upload</button>
+</form>
+<script>
+(function () {
+  var lat = document.getElementById("location_lat");
+  var lng = document.getElementById("location_lng");
+  var consent = document.getElementById("location_consented");
+  var submit = document.getElementById("upload_submit");
+  function update() {
+    var placed = lat.value !== "" && lng.value !== "";
+    submit.disabled = !(placed && consent.checked);
+  }
+  lat.addEventListener("input", update);
+  lng.addEventListener("input", update);
+  consent.addEventListener("change", update);
+  update();
+})();
+</script>
 {% else %}
 <p>Please verify your email to enable uploads. Uploads are disabled
 until your email address is verified.</p>

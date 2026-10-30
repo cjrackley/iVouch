@@ -1,12 +1,19 @@
-"""Server-rendered account pages for iVouch Lite (spec 3, objective 3.1).
+"""Server-rendered account and upload pages for iVouch Lite (spec 3).
 
-Routes (``pages_router``, included FIRST in ``create_app`` so the HTML
-``GET /account`` below is reached before the JSON ``GET /account`` in
-the spec-2 auth router; every other path is clash-free):
-``GET/POST /signup``, ``GET/POST /login``, ``GET /logout``,
-``GET /account`` (HTML for browsers), ``POST /account/delete``,
-``GET /verify``, ``POST /verify-resend``, ``GET /upload`` (verified
-gate only; the upload form itself is objective 3.2),
+Routes (``pages_router``, included FIRST in ``create_app`` so each
+HTML page below is reached before the same-path JSON route in the
+spec-2 routers; non-browser clients are delegated to the spec-2
+implementation unchanged):
+objective 3.1: ``GET/POST /signup``, ``GET/POST /login``,
+``GET /logout``, ``GET /account`` (HTML for browsers),
+``POST /account/delete``, ``GET /verify``, ``POST /verify-resend``,
+``GET /upload`` (verified gate);
+objective 3.2: ``POST /upload`` (browser upload flow),
+``GET /reports`` (own list, HTML for browsers),
+``GET /reports/{id}`` (owner result, HTML for browsers),
+``GET /shared/{id}`` (community page, HTML for browsers);
+``GET /shared/photos/{id}`` (photo bytes for cookie sessions);
+``GET /api/photos/{id}`` (cookie-aware bridge, delegates without one);
 ``GET /static/style.css``.
 
 Auth bridge: a successful page login calls the spec-2 ``POST
@@ -35,21 +42,60 @@ Content negotiation on ``GET /account``: browsers send
 spec-2 ``GET /account`` implementation unchanged, so the JSON contract
 (and its 401s) is byte-for-byte what it was.
 
-``GET /upload`` gate helper (shared for objective 3.2): anonymous users
-are redirected to ``/login``; unverified users get a page saying
-"verify your email" with a resend action and uploads disabled;
-verified users get a placeholder until 3.2 adds the form.
+``GET /upload`` gate: anonymous users are redirected to ``/login``;
+unverified users get a page saying "verify your email" with a resend
+action and uploads disabled; verified users get the upload form
+(photo, optional claim text, location picker plus mandatory consent
+checkbox) with the demo content notice and the data-use notice above
+the picker. The submit button starts disabled and is enabled by a tiny
+vanilla script only when a location is set and consent is checked;
+the server enforces the same rule through the 422 path of the spec-2
+``POST /analyze`` implementation.
+
+``POST /upload`` browser flow: the form posts here (cookie session +
+CSRF), and this handler delegates to the spec-2 ``POST /analyze``
+implementation (``api.analyze``, same function the JSON route calls,
+so there is exactly one upload rule set) with the session account.
+The JSON route itself stays Bearer-only, which browsers cannot send
+(the session cookie is HttpOnly). A finished upload redirects to the
+owner result page; the mock-gate rejection body shape (no report row
+exists) renders a page with only the generic message plus the content
+notice. ``GET /reports`` lists only the caller's own reports, newest
+first, as links (never image bytes). ``GET /reports/{id}`` renders
+the owner result card from API JSON display values (never recomputed
+checks). ``GET /shared/{id}`` renders the shared fields plus the
+photo for any logged-in user (404 when no accepted report exists).
+
+``GET /shared/photos/{id}`` serves the stored photo bytes to a
+cookie-session browser (``<img>`` tags send cookies, never an
+``Authorization`` header). It authenticates via the ``lite_session``
+cookie exactly like the other page routes and then delegates to the
+spec-2 ``GET /api/photos/{id}`` implementation with the
+cookie-derived account, so the visibility rule has exactly one
+implementation (any logged-in user when accepted, owner-only
+otherwise, 404 for rejected/missing). Anonymous callers get the 404
+page (an ``<img>`` cannot follow a login redirect).
+
+The owner result card (``report.html``, which renders ``<img
+src="{{ report.photo_url }}">`` with the API URL) is fixed without
+touching that template: this router is included before the spec-2
+routers, so ``GET /api/photos/{id}`` here is reached first. With a
+valid session cookie it serves through the same spec-2
+implementation; without one it delegates to the spec-2 handler
+unchanged, so Bearer-token JSON clients (and their 401s) behave
+byte-for-byte as before.
 """
 
 from __future__ import annotations
 
 import secrets
+import uuid
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 
 import jinja2
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
@@ -465,13 +511,12 @@ async def verify_resend(request: Request):
 
 @pages_router.get("/upload")
 def upload_landing(request: Request):
-    """Shared upload gate (objective 3.2 builds the form on top).
+    """Upload gate: login redirect, verify prompt, or the upload form."""
+    return _upload_page(request, account=_account_for_session(request))
 
-    Anonymous users go to login; unverified users see the "verify your
-    email" prompt with a resend action and uploads disabled; verified
-    users get a placeholder until 3.2.
-    """
-    account = _account_for_session(request)
+
+def _upload_page(request: Request, account, error=None, status: int = 200):
+    """Render ``GET /upload`` for ``account`` (None means anonymous)."""
     if account is None:
         return _redirect("/login")
     token, is_new = _csrf_issue(request)
@@ -481,6 +526,276 @@ def upload_landing(request: Request):
             "title": "Upload",
             "csrf_token": token,
             "verified": bool(account["email_verified"]),
+            "client_report_id": uuid.uuid4().hex,
+            "error": error,
         },
+        status=status,
         csrf_new=token if is_new else None,
     )
+
+
+def _parse_float(value):
+    """Parse a form value to float, or None when missing/not numeric."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _not_found(back: str = "/", back_label: str = "Home"):
+    """Render the generic 404 page."""
+    return _render(
+        "message.html",
+        {
+            "title": "Not found",
+            "heading": "Not found",
+            "message": "Not found.",
+            "back": back,
+            "back_label": back_label,
+        },
+        status=404,
+    )
+
+
+def _top_incident(body: dict):
+    """Top ``(name, probability)`` from an API report payload.
+
+    Pure display derivation from the API JSON values the page was
+    given; no check is recomputed here.
+    """
+    incident = dict(body["incident_probs"])
+    name = max(incident, key=incident.get)
+    return name, incident[name]
+
+
+@pages_router.post("/upload")
+async def upload_submit(request: Request):
+    """Browser upload flow through the spec-2 ``POST /analyze`` rules.
+
+    Cookie session plus CSRF (browsers cannot send the JSON route's
+    Bearer header). Delegates to ``api.analyze`` with the session
+    account, so file, location/consent, verification, and mock-gate
+    rules have exactly one implementation. Missing location or
+    consent answers 422 with the form re-rendered; a finished upload
+    redirects to the owner result page; the mock-gate rejection body
+    (no report row exists) renders only the generic message plus the
+    content notice.
+    """
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    if not account["email_verified"]:
+        return _upload_page(request, account, status=403)
+
+    raw_photo = form.get("photo")
+    photo = (
+        raw_photo
+        if hasattr(raw_photo, "filename") and raw_photo.filename
+        else None
+    )
+    claim_raw = form.get("claim_text")
+    if claim_raw is None:
+        claim_raw = form.get("claim")
+    claim = claim_raw if isinstance(claim_raw, str) else None
+    source_raw = form.get("location_source")
+    source = source_raw if isinstance(source_raw, str) else None
+    client_raw = form.get("client_report_id")
+    client_id = (
+        client_raw.strip()
+        if isinstance(client_raw, str) and client_raw.strip()
+        else None
+    )
+
+    from lite.app.server import api as api_module
+    from lite.app.server.pipeline import MOCK_REJECTION_DETAIL
+
+    try:
+        body = api_module.analyze(
+            request,
+            account,
+            photo=photo,
+            claim_text=claim,
+            client_report_id=client_id,
+            location_lat=_parse_float(form.get("location_lat")),
+            location_lng=_parse_float(form.get("location_lng")),
+            location_consented=form.get("location_consented")
+            in ("true", "on", "yes", "1"),
+            location_source=source,
+        )
+    except HTTPException as exc:
+        if exc.status_code in (413, 415, 422):
+            return _upload_page(
+                request, account, error=str(exc.detail),
+                status=exc.status_code,
+            )
+        if exc.status_code == 403:
+            return _upload_page(request, account, status=403)
+        return _render(
+            "message.html",
+            {
+                "title": "Upload failed",
+                "heading": "Upload failed",
+                "message": str(exc.detail),
+                "back": "/upload",
+                "back_label": "Back to upload",
+            },
+            status=exc.status_code,
+        )
+    if "report_id" in body:
+        return _redirect(f"/reports/{body['report_id']}")
+    return _render(
+        "rejection.html",
+        {
+            "title": "Upload not accepted",
+            "message": body.get("detail") or MOCK_REJECTION_DETAIL,
+            "demo_notice": body.get("demo_notice"),
+        },
+    )
+
+
+@pages_router.get("/reports")
+def reports_list(request: Request):
+    """Own-reports list: HTML for browsers, JSON delegation otherwise.
+
+    The page shows only the caller's own reports, newest first, as
+    links. No image bytes appear on this page.
+    """
+    if not _wants_html(request):
+        from lite.app.server import api as api_module
+
+        account = api_module.get_current_account(request)
+        return api_module.list_reports(request, account)
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    from lite.app.server import api as api_module
+
+    items = api_module.list_reports(request, account)
+    return _render(
+        "reports.html",
+        {
+            "title": "Your reports",
+            "reports": list(reversed(items)),
+        },
+    )
+
+
+@pages_router.get("/reports/{report_id}")
+def report_detail(request: Request, report_id: int):
+    """Owner result page: HTML for browsers, JSON delegation otherwise.
+
+    Reads every display value from the API JSON payload. A
+    ``needs_review`` verdict shows the human-review banner
+    prominently.
+    """
+    if not _wants_html(request):
+        from lite.app.server import api as api_module
+
+        account = api_module.get_current_account(request)
+        return api_module.get_report(report_id, request, account)
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    from lite.app.server import api as api_module
+
+    try:
+        body = api_module.get_report(report_id, request, account)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found(
+                back="/reports", back_label="Back to your reports"
+            )
+        raise
+    name, prob = _top_incident(body)
+    return _render(
+        "report.html",
+        {
+            "title": f"Report {body['report_id']}",
+            "report": body,
+            "top_incident": name,
+            "top_incident_prob": prob,
+        },
+    )
+
+
+@pages_router.get("/shared/{report_id}")
+def shared_detail(request: Request, report_id: int):
+    """Community page: shared fields plus photo, any logged-in user.
+
+    HTML for browsers, JSON delegation otherwise. Rejected uploads
+    create no report row and deleted accounts take their rows with
+    them, so both answer with the 404 page here.
+    """
+    if not _wants_html(request):
+        from lite.app.server import api as api_module
+
+        account = api_module.get_current_account(request)
+        return api_module.get_shared_report(report_id, request, account)
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    from lite.app.server import api as api_module
+
+    try:
+        body = api_module.get_shared_report(report_id, request, account)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found()
+        raise
+    name, prob = _top_incident(body)
+    return _render(
+        "shared.html",
+        {
+            "title": f"Shared report {body['report_id']}",
+            "report": body,
+            "top_incident": name,
+            "top_incident_prob": prob,
+        },
+    )
+
+
+@pages_router.get("/shared/photos/{report_id}")
+def shared_photo(request: Request, report_id: int):
+    """Serve a report's photo bytes to a cookie-session browser.
+
+    Cookie session via ``_account_for_session`` (the ``lite_session``
+    cookie holds the same JWT the Bearer header carries), then
+    straight to the spec-2 ``GET /api/photos/{id}`` implementation,
+    so the visibility rule is identical: any logged-in user when
+    accepted, owner-only otherwise, 404 for rejected/missing.
+    Anonymous callers get the 404 page (an ``<img>`` cannot follow a
+    login redirect, and the existence of the photo stays hidden).
+    """
+    account = _account_for_session(request)
+    if account is None:
+        return _not_found()
+    from lite.app.server import api as api_module
+
+    try:
+        return api_module.get_photo(report_id, request, account)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found()
+        raise
+
+
+@pages_router.get("/api/photos/{report_id}")
+def photo_cookie_bridge(request: Request, report_id: int):
+    """Cookie-aware bridge in front of the spec-2 photo bytes route.
+
+    This router is included before the spec-2 routers, so this
+    handler is reached first for the ``<img src>`` URL the result
+    pages render. With a valid session cookie it serves through the
+    spec-2 ``get_photo`` implementation (same bytes, same visibility
+    rule); without one it delegates to the spec-2 handler unchanged,
+    so Bearer-token clients and anonymous 401s are untouched.
+    """
+    account = _account_for_session(request)
+    from lite.app.server import api as api_module
+
+    if account is None:
+        account = api_module.get_current_account(request)
+    return api_module.get_photo(report_id, request, account)

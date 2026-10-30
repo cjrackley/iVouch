@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Upload not accepted</h1>
+<p>{{ message }}</p>
+{% if demo_notice %}<p>{{ demo_notice }}</p>{% endif %}
+<p class="notice">Demo content notice: Lite checks file properties, provenance signals, duplicates, and similarity scores. Safety screening in Lite is a mock, not a production check. Not for emergencies: call your local emergency number.</p>
+<p><a href="/upload">Back to upload</a></p>
+{% endblock %}

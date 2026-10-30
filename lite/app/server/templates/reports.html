@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Your reports</h1>
+{% if reports %}
+<ul>
+{% for item in reports %}
+<li><a href="/reports/{{ item.report_id }}">Report {{ item.report_id }}</a>
+({{ item.verdict }}, submitted {{ item.created_at }})</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No reports yet.</p>
+{% endif %}
+<p><a href="/upload">Upload a photo</a></p>
+{% endblock %}
