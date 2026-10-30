@@ -75,5 +75,33 @@ reviewer pages per tests. (5) both entries complete.
 Commit: (recorded after commit)
 
 # Spec status: 2/4 ACCEPTED; open: 4.3, 4.4
+- Commit 4876974 recorded for joint 4.1/4.2 (8 files, working tree clean after).
+- Roster: 4.3 abuse+safety dispatched 2026-10-30T01:08:57-04:00 (single implement brief).
+
+### Task 4.3 implement, attempt 1
+- Objective: abuse and safety basics (upload cap, login rate limit, secrets grep, audit listing)
+- Touched: lite/app/server/api.py (edited), lite/app/server/pages.py (edited)
+- Created: lite/app/server/templates/audit.html, lite/tests/test_abuse.py
+- Tests: python -m pytest lite/tests -q -- 149 passed (145 prior + 4 new)
+- Test integrity: no locked-path edits; lite/config.yaml untouched (rate-limit test lowers values via loader monkeypatch); no existing test/fixture edits
+- Dependencies: none added
+- Resources: within 60-min budget; stubbed CLIP encoder for flow setup (fast), no GPU used
+- Checkpoint: n/a (short task)
+- Mocks/blocked: FanStub encoder per sibling suites; sandbox blocked TestClient sockets (same PermissionError on untouched prior tests), cleared with the one legitimate require_escalated approval the brief allows; lite/logs/spec4_log.md diff is the orchestrator's own roster line, not builder work
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit).
+Gates: (1) diff clean — api.py cap+limiter, pages.py audit page,
+audit.html + test_abuse.py new, plus orchestrator log. (2) tests
+run in-session (escalated path for sockets): 149 passed. (3)
+integrity: 4 tests map to the 4 criteria (cap loop to 429 with
+nothing stored incl. no audit row; lowered-value rate limit via
+loader monkeypatch; secrets grep with minimal allowlist; audit
+listing with claim-text exclusion + 403). (4) honesty: no mocks
+beyond sanctioned stub. (5) log entry complete.
+Commit: (recorded after commit)
+
+# Spec status: 3/4 ACCEPTED; open: 4.4
 
 <!-- END-OF-LOG -->

@@ -1029,3 +1029,31 @@ async def review_action_submit(request: Request, report_id: int):
             return _fail(str(exc.detail))
         raise
     return _redirect(f"/review/{report_id}")
+
+
+def _audit_events(request: Request) -> list:
+    """Every audit event, oldest first, for the reviewer listing.
+
+    Reads only the ``audit_events`` columns. Rejection details carry
+    hash, time, and account only (never image bytes or claim text,
+    by construction in the pipeline); review-action and
+    account-deletion details likewise carry labels and email/time
+    only. Nothing is recomputed here.
+    """
+    with _page_connection(request) as conn:
+        rows = conn.execute(
+            "SELECT id, kind, actor_account_id, report_id, detail,"
+            " created_at FROM audit_events ORDER BY id"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+@pages_router.get("/audit")
+def audit_list(request: Request):
+    """Reviewer-only audit listing (403 otherwise, never a redirect)."""
+    if _reviewer_session(request) is None:
+        return _review_denied()
+    return _render(
+        "audit.html",
+        {"title": "Audit events", "events": _audit_events(request)},
+    )

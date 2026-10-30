@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
@@ -57,6 +58,52 @@ GENERIC_REGISTER_MESSAGE = (
     "If your details are valid, check your email for next steps."
 )
 GENERIC_LOGIN_DETAIL = "Invalid email or password."
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP for the login rate-limit bucket."""
+    client = request.client
+    if client is not None and getattr(client, "host", None):
+        return client.host
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded.strip():
+        return forwarded.split(",")[0].strip()
+    return "unknown"
+
+
+def _login_attempts_store(request: Request) -> dict:
+    """In-memory per-process login-attempt store (single-process Lite)."""
+    store = getattr(request.app.state, "login_attempts", None)
+    if store is None:
+        store = {}
+        request.app.state.login_attempts = store
+    return store
+
+
+def _check_login_ratelimit(request: Request) -> None:
+    """Raise 429 when this IP exhausted its login-attempt budget.
+
+    Every ``POST /auth/login`` hit records one timestamp; attempts
+    older than ``login_ratelimit_window_seconds`` fall out of the
+    window. Past ``login_ratelimit_max_attempts`` within the window
+    the handler answers 429 without checking credentials. Both
+    limits come from ``lite/config.yaml`` via the loader.
+    """
+    cfg = load_config()
+    max_attempts = cfg.login_ratelimit_max_attempts
+    window = cfg.login_ratelimit_window_seconds
+    now = time.time()
+    ip = _client_ip(request)
+    store = _login_attempts_store(request)
+    recent = [t for t in store.get(ip, []) if now - t < window]
+    if len(recent) >= max_attempts:
+        store[ip] = recent
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again later.",
+        )
+    recent.append(now)
+    store[ip] = recent
 
 
 def _lite_dir() -> Path:
@@ -136,6 +183,7 @@ def create_app(
         else str(_lite_dir() / "data" / "uploads")
     )
     app.state.clip_encoder = clip_encoder
+    app.state.login_attempts = {}
     from lite.app.server import pages as pages_module
 
     # Pages first: the HTML GET /account (browser navigation) is reached
@@ -289,7 +337,10 @@ def login(payload: LoginRequest, request: Request):
     one body), so neither reveals whether an address is registered.
     Unverified accounts do get a token here -- the verified-only gate
     lives on upload (objective 2.3), which answers 403.
+    Per-IP attempts are rate-limited first (429 past the configured
+    budget), without revealing whether the address is registered.
     """
+    _check_login_ratelimit(request)
     email = normalize_email(payload.email)
     with _connection(request) as conn:
         row = get_account_by_email(conn, email)
@@ -378,7 +429,9 @@ def analyze(
     Order: (1) location/consent validation first -- missing
     coordinates, a missing consent flag, or a false flag answers 422
     and stores nothing (no files, rows, or audit events); (2) the
-    verified-email gate answers 403; the rest (413/415 file sanity,
+    verified-email gate answers 403; (3) the per-account upload cap
+    from config answers 429 past the cap, storing nothing; the rest
+    (413/415 file sanity,
     the mock hash gate, provenance -> duplicates -> CLIP -> claim ->
     fusion) is delegated to the pipeline module. A completed upload
     returns 200 with the finished report.
@@ -422,6 +475,19 @@ def analyze(
         raise HTTPException(
             status_code=422,
             detail="photo is required.",
+        )
+    # (3) Per-account upload cap: past the cap answer 429 and store
+    # nothing (no files, rows, or audit events).
+    cap = load_config().upload_cap_per_account
+    with _connection(request) as conn:
+        used = conn.execute(
+            "SELECT COUNT(*) AS n FROM reports WHERE account_id = ?",
+            (account["id"],),
+        ).fetchone()["n"]
+    if used >= cap:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upload cap reached for this account.",
         )
     raw = upload.file.read()
     text = claim_text if claim_text is not None else claim

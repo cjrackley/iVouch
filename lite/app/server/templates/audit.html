@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Audit events</h1>
+<p>Reviewer-only listing of demo audit events. Rejection entries show
+the file hash, time, and account only — never image bytes or claim
+text.</p>
+{% if events %}
+<ul>
+{% for event in events %}
+<li>{{ event.kind }} at {{ event.created_at }} — {{ event.detail }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No audit events yet.</p>
+{% endif %}
+<p><a href="/review">Back to the review queue</a></p>
+{% endblock %}
