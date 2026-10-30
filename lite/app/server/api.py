@@ -16,6 +16,7 @@ importing this module touches no disk.
 
 from __future__ import annotations
 
+import json
 import math
 import sqlite3
 from contextlib import contextmanager
@@ -31,6 +32,7 @@ from fastapi import (
     Form,
     HTTPException,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -40,6 +42,7 @@ from pydantic import BaseModel, field_validator
 from lite.app.config import load_config
 from lite.app.server import auth as auth_helpers
 from lite.app.server import pipeline as upload_pipeline
+from lite.app.server.geo import display_point
 from lite.app.server.db import (
     connect,
     create_account,
@@ -135,6 +138,7 @@ def create_app(
     app.state.clip_encoder = clip_encoder
     app.include_router(auth_router)
     app.include_router(upload_router)
+    app.include_router(retrieval_router)
     return app
 
 
@@ -431,7 +435,298 @@ def analyze(
         )
     if status_code != 200:
         raise HTTPException(status_code=status_code, detail=body["detail"])
+    if "report_id" in body:
+        # Remember the normalised claim for retrieval. First upload
+        # wins on idempotent replay (INSERT OR IGNORE), matching the
+        # report row's first-wins rule. Claims live in an auxiliary
+        # table owned here so the committed schema stays untouched.
+        with _connection(request) as conn:
+            _remember_claim(conn, body["report_id"], claim_value)
     return body
+
+
+retrieval_router = APIRouter(tags=["retrieval"])
+
+_CLAIMS_TABLE_SQL = (
+    "CREATE TABLE IF NOT EXISTS report_claims ("
+    " report_id INTEGER PRIMARY KEY REFERENCES reports(id)"
+    " ON DELETE CASCADE,"
+    " claim_text TEXT)"
+)
+
+
+def _ensure_claims_table(conn) -> None:
+    """Create the auxiliary claim-text table when missing."""
+    conn.execute(_CLAIMS_TABLE_SQL)
+    conn.commit()
+
+
+def _remember_claim(conn, report_id: int, claim_text) -> None:
+    """Store ``claim_text`` for ``report_id`` (first write wins)."""
+    _ensure_claims_table(conn)
+    conn.execute(
+        "INSERT OR IGNORE INTO report_claims (report_id, claim_text)"
+        " VALUES (?, ?)",
+        (report_id, claim_text),
+    )
+    conn.commit()
+
+
+def _claim_text(conn, report_id: int):
+    """Return the stored claim for ``report_id``, or None."""
+    _ensure_claims_table(conn)
+    row = conn.execute(
+        "SELECT claim_text FROM report_claims WHERE report_id = ?",
+        (report_id,),
+    ).fetchone()
+    return row["claim_text"] if row is not None else None
+
+
+def _check_result(conn, report_id: int):
+    """Return the ``check_results`` row, or None when not accepted."""
+    return conn.execute(
+        "SELECT * FROM check_results WHERE report_id = ?",
+        (report_id,),
+    ).fetchone()
+
+
+def _accepted_report(conn, report_id: int):
+    """Return ``(report, check)`` for an accepted report, else None.
+
+    Accepted means the report row exists and has a ``check_results``
+    row. Mock-gate-rejected uploads create no report row, so they
+    land here as None (404 everywhere).
+    """
+    report = conn.execute(
+        "SELECT * FROM reports WHERE id = ?", (report_id,)
+    ).fetchone()
+    if report is None:
+        return None
+    check = _check_result(conn, report_id)
+    if check is None:
+        return None
+    return report, check
+
+
+def _photo_url(report_id: int) -> str:
+    """Public photo route for a report (never a raw file path)."""
+    return f"/api/photos/{report_id}"
+
+
+def _report_payload(report, check, claim_text, owner: bool) -> dict:
+    """Build the exact retrieval body for one accepted report.
+
+    Never serializes the uploader email, exact coordinates, or raw
+    file paths -- only the jittered ``display_*`` point.
+    """
+    incident = dict(json.loads(check["incident_probs"]))
+    severity = dict(json.loads(check["severity_probs"]))
+    display_lat, display_lng = display_point(
+        report["location_lat"], report["location_lng"], report["id"]
+    )
+    shared = {
+        "report_id": report["id"],
+        "photo_url": _photo_url(report["id"]),
+        "claim_text": claim_text,
+        "display_lat": display_lat,
+        "display_lng": display_lng,
+        "incident_probs": incident,
+        "severity_probs": severity,
+        "top_severity": (
+            max(severity, key=severity.get) if severity else None
+        ),
+        "verdict": check["verdict"],
+        "reasons": list(json.loads(check["reasons"])),
+        "confidence": (
+            max(incident.values()) if incident else 0.0
+        ),
+        "created_at": report["created_at"],
+    }
+    if not owner:
+        return shared
+    return {
+        "report_id": shared["report_id"],
+        "status": report["status"],
+        "client_report_id": report["client_report_id"],
+        "photo_url": shared["photo_url"],
+        "claim_text": shared["claim_text"],
+        "display_lat": shared["display_lat"],
+        "display_lng": shared["display_lng"],
+        "incident_probs": shared["incident_probs"],
+        "severity_probs": shared["severity_probs"],
+        "top_severity": shared["top_severity"],
+        "verdict": shared["verdict"],
+        "reasons": shared["reasons"],
+        "confidence": shared["confidence"],
+        "needs_review": check["verdict"] != "likely-real",
+        "created_at": shared["created_at"],
+    }
+
+
+def _photo_path(uploads_dir, account_id: int, report_id: int):
+    """Resolve the stored photo file, or None when missing."""
+    parent = Path(uploads_dir) / str(account_id)
+    if not parent.is_dir():
+        return None
+    candidates = sorted(parent.glob(f"{report_id}.*"))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _photo_media_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in (".jpg", ".jpeg"):
+        return "image/jpeg"
+    if suffix == ".png":
+        return "image/png"
+    return "application/octet-stream"
+
+
+@retrieval_router.get("/reports")
+def list_reports(request: Request, account: dict = Depends(get_current_account)):
+    """List the caller's own accepted reports (owner-only)."""
+    with _connection(request) as conn:
+        rows = conn.execute(
+            "SELECT r.* FROM reports r"
+            " JOIN check_results c ON c.report_id = r.id"
+            " WHERE r.account_id = ? ORDER BY r.id",
+            (account["id"],),
+        ).fetchall()
+        return [
+            _report_payload(
+                row,
+                _check_result(conn, row["id"]),
+                _claim_text(conn, row["id"]),
+                owner=True,
+            )
+            for row in rows
+        ]
+
+
+@retrieval_router.get("/reports/{report_id}")
+def get_report(
+    report_id: int,
+    request: Request,
+    account: dict = Depends(get_current_account),
+):
+    """Return one own report; 404 unless the caller owns it."""
+    with _connection(request) as conn:
+        report = conn.execute(
+            "SELECT * FROM reports WHERE id = ?", (report_id,)
+        ).fetchone()
+        if report is None or report["account_id"] != account["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found.",
+            )
+        check = _check_result(conn, report_id)
+        if check is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found.",
+            )
+        return _report_payload(
+            report, check, _claim_text(conn, report_id), owner=True
+        )
+
+
+@retrieval_router.get("/api/incidents")
+def list_incidents(
+    request: Request, account: dict = Depends(get_current_account)
+):
+    """GeoJSON-style shared list of accepted reports, all accounts."""
+    with _connection(request) as conn:
+        rows = conn.execute(
+            "SELECT r.* FROM reports r"
+            " JOIN check_results c ON c.report_id = r.id"
+            " ORDER BY r.id"
+        ).fetchall()
+        features = []
+        for report in rows:
+            check = _check_result(conn, report["id"])
+            payload = _report_payload(
+                report, check, _claim_text(conn, report["id"]),
+                owner=False,
+            )
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [
+                            payload["display_lng"],
+                            payload["display_lat"],
+                        ],
+                    },
+                    "properties": payload,
+                }
+            )
+    return {"type": "FeatureCollection", "features": features}
+
+
+@retrieval_router.get("/shared/{report_id}")
+def get_shared_report(
+    report_id: int,
+    request: Request,
+    account: dict = Depends(get_current_account),
+):
+    """Return one accepted report's shared fields (any login)."""
+    with _connection(request) as conn:
+        found = _accepted_report(conn, report_id)
+        if found is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found.",
+            )
+        report, check = found
+        return _report_payload(
+            report, check, _claim_text(conn, report_id), owner=False
+        )
+
+
+@retrieval_router.get("/api/photos/{report_id}")
+def get_photo(
+    report_id: int,
+    request: Request,
+    account: dict = Depends(get_current_account),
+):
+    """Serve stored photo bytes.
+
+    Any logged-in user may fetch an accepted report's photo;
+    otherwise only the owner (404 for everyone else, and 404 when
+    no report row exists, e.g. mock-rejected uploads).
+    """
+    with _connection(request) as conn:
+        report = conn.execute(
+            "SELECT * FROM reports WHERE id = ?", (report_id,)
+        ).fetchone()
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found.",
+            )
+        accepted = _check_result(conn, report_id) is not None
+        if not accepted and report["account_id"] != account["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found.",
+            )
+        path = _photo_path(
+            request.app.state.uploads_dir,
+            report["account_id"],
+            report_id,
+        )
+        if path is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found.",
+            )
+        return Response(
+            content=path.read_bytes(),
+            media_type=_photo_media_type(path),
+        )
 
 
 # Module-level app for serving (uvicorn lite.app.server.api:app).

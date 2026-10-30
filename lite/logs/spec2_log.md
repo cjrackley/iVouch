@@ -135,5 +135,55 @@ pins the body, not the status).
 Commit: (recorded after commit)
 
 # Spec status: 3/5 ACCEPTED; open: 2.4, 2.5
+- Commit 2c786ba recorded for 2.3 (4 files, working tree clean after).
+- Roster: 2.4 retrieval swarm pair dispatched 2026-10-29T19:31:02-04:00 (implementer: geo.py + route extension; test-specialist: test_retrieval.py; dictated contract).
+
+### Task 2.4 implement, attempt 1
+- Objective: report retrieval endpoints (owner + shared + photos) with deterministic jitter
+- Touched: lite/app/server/api.py (edited: imports, claim hook in analyze, retrieval_router with 5 routes, router include)
+- Created: lite/app/server/geo.py (display_point seeded by report id, jitter bounds via loader, 111320 m/deg with cos(lat) lng scaling)
+- Tests: python -m pytest lite/tests -q --ignore=lite/tests/test_retrieval.py -- 88 passed; lite/tests/test_retrieval.py (concurrent builder's file, run only, never read/edited) -- 6 passed
+- Test integrity: no locked-path edits; no test written or edited; existing upload/auth file-count assertions preserved (no new files under uploads_dir)
+- Dependencies: none added
+- Resources: within 60-min budget; CPU only, stubbed encoder probe
+- Checkpoint: lite/work/checkpoints/spec-2-2.4-impl.md
+- Mocks/blocked: none; sandbox blocked sockets for TestClient tests (WinError 10013), so verification used one legitimate require_escalated approval per AGENTS.md 3
+- Notes: claim_text persists in lazily created report_claims aux table (first-wins, FK cascade) since committed schema has no claim column and upload file counts are asserted exact; accepted = has check_results row; owner non-member reads 404; no email/exact-coords/paths serialized (exact key sets per brief)
+- Signals: none
+- Status: PROVISIONAL
+
+### Task 2.4 tests, attempt 1
+- Objective: report retrieval tests (spec-2 2.4, tests half)
+- Touched: none (no production files)
+- Created: lite/tests/test_retrieval.py (6 tests: owner exact keys + list isolation; other-account 403/404 + shared access; forbidden-field sweep + display stability; photo bytes + anonymous 401; mock-rejected 404s; accepted-only shared surfaces)
+- Tests: python -m pytest lite/tests/test_retrieval.py -q -- 6 passed; python -m pytest lite/tests -q -- 94 passed
+- Test integrity: no locked-path edits; one helper bug (wrong-recipient mail token) fixed in the new test file, not in code; implementation verified as landed by the concurrent implementer (geo.py + api.py), never written by this role
+- Dependencies: none added (stdlib + PIL/fastapi already pinned)
+- Resources: ~25 min of 60 budget; CPU only, stubbed CLIP encoder, no GPU used
+- Checkpoint: lite/work/checkpoints/spec-2-2.4-tests.md
+- Mocks/blocked: stubbed CLIP encoder via create_app clip_encoder seam (fast; live path is 2.5's); one legitimate require_escalated approval for sandbox-blocked sockets (WinError 10013)
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (joint 2.4): ACCEPTED (both native, inherit; paired dispatch
+19:31, entries landed ~20:32).
+Gates: (1) diff clean — geo.py new + api.py route-only edit +
+test_retrieval.py new + orchestrator log; user agents/* excluded.
+(2) tests run in-session (escalated path for sockets): 94 passed.
+(3) integrity: new test file only, exact owner/shared key sets,
+forbidden-field sweep incl. exact-float coords, jitter stability,
+photo round-trip, mock-rejected 404s; helper bug fixed in own file.
+(4) honesty: stub encoder is the sanctioned fast surface, live path
+is 2.5's; no email/coords/paths in any response per sweep test.
+(5) both entries complete. Extra orchestrator gate: live
+register/upload-with-claim/delete probe (throwaway, removed after)
+confirmed claim row stored then fully cascaded (0 claims/reports/
+accounts, 1 deletion audit) — the aux-table design holds.
+Swarm note: implementer wait-registry hiccup (target_missing on
+wait) did not stop its work — files/checkpoint all landed; pairing
+held by disjoint paths.
+Commit: (recorded after commit)
+
+# Spec status: 4/5 ACCEPTED; open: 2.5
 
 <!-- END-OF-LOG -->
