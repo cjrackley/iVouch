@@ -98,3 +98,60 @@ Nothing outside `lite/` is edited by Lite work.
 - The default sandbox blocks sockets. Symptom is WinError 10013.
 - Gate those tests through the sanctioned one-time escalation path.
 - Socket-free checks run without it.
+
+## Run the demo locally
+
+All commands run from the repository root. Use a project-local
+environment first; never install into the system interpreter.
+
+1. Create and activate a project-local environment, then install:
+
+   python -m venv .venv
+   .venv\Scripts\activate        (Windows PowerShell)
+   source .venv/bin/activate     (Linux/macOS)
+   pip install -r lite/requirements.txt
+
+   (`uv venv` plus `uv pip install -r lite/requirements.txt` works too.)
+
+2. Set a dev-only JWT secret for this shell (local demo only; never
+   commit a real secret, and never reuse this value anywhere else):
+
+   $env:LITE_JWT_SECRET = "dev-only-local-demo-secret"   (PowerShell)
+   export LITE_JWT_SECRET=dev-only-local-demo-secret     (bash)
+
+   If the variable is unset the server still starts but logs a warning
+   and uses an insecure dev-only fallback. That fallback is for local
+   development only.
+
+3. Start the server:
+
+   python -m lite.app.server
+
+   This serves http://127.0.0.1:8000. Host and port are overridable:
+
+   python -m lite.app.server --host 127.0.0.1 --port 8000
+   python -m lite.app.server --help   (prints usage, does not serve)
+
+4. First-run note: on first start the pinned CLIP model
+   (openai/clip-vit-base-patch32, about 1.8 GB) downloads from
+   HuggingFace into git-ignored `lite/data/artifacts/` and is reused
+   from there on later runs. Allow time and disk space for this. The
+   default device is CPU fallback, which is expected and normal
+   without a GPU (inference is slower but works).
+
+5. Seed a reviewer (after signing that account up in the browser):
+
+   python -m lite.app.cli make-reviewer reviewer@example.com
+
+   The command errors clearly on an unknown email. Only this CLI can
+   grant the reviewer flag; there is no web path to self-promote.
+
+6. Where local state lives (all git-ignored, safe to delete to reset):
+
+   - SQLite database: `lite/data/ivouch.db`
+   - Uploaded photos: `lite/data/uploads/<account-id>/`
+   - Console mail (verification tokens): `lite/data/mail/`
+   - Model weights: `lite/data/artifacts/`
+   - Scratch and checkpoints: `lite/work/`
+
+   For the full click-through script, see `lite/DEMO.md`.

@@ -108,4 +108,32 @@ Commit: (recorded after commit)
   (README run section + DEMO.md brief, then orchestrator
   fresh-checkout manual run) followed by spec-5 map.
 
+### Task 4.4 demo and review pack, attempt 1
+- Objective: README run section plus manual demo script (spec-4 objective 4.4)
+- Touched: lite/README.md (appended "Run the demo locally" section only; prior content preserved)
+- Created: lite/DEMO.md (replaced stub with full 11-step demo script; brief lists it in new_files)
+- Tests: none (docs brief, must_pass empty; suite not run, server not started, per brief)
+- Test integrity: no locked-path edits (spec, agents, app, tests, requirements, config untouched); read-only reads of cli.py, __main__.py, mail.py, auth.py, config.yaml, pages.py routes used to ground commands and paths
+- Dependencies: none added
+- Resources: about 15 min of 60 budget; no GPU used; no network used
+- Checkpoint: n/a (short docs task; brief checkpoint path not needed beyond this entry)
+- Mocks/blocked: none; map step marked following-spec (no /map route exists yet; spec 5 unbuilt); DEMO.md states zero-shot demo accuracy, mock safety gate, no forensic detector, no launch/pilot claim
+- Verification: re-read both files; lite/DEMO.md ASCII-only LF; README additions ASCII-only LF (15 non-ASCII bytes are pre-existing lines 17/66/88/90/91, untouched); git status shows only lite/DEMO.md and lite/README.md modified
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit).
+Gates: (1) diff clean — README append + DEMO rewrite only (DEMO
+was a stub; replacement authorized by brief). (2) tests n/a (docs
+brief; code untouched since 149-green). (3) integrity: facts
+grounded in committed code (serve defaults 127.0.0.1:8000 +
+--host/--port verified in __main__.py; non-ASCII bytes
+pre-existing, untouched). (4) honesty: demo limits stated, map
+marked following-spec. (5) log entry complete.
+Remaining: orchestrator fresh-checkout manual run (4.4 first
+criterion) AFTER this commit.
+Commit: (recorded after commit)
+
+# Spec status: 4/4 ACCEPTED (docs); open: orchestrator fresh-checkout run
+
 <!-- END-OF-LOG -->
