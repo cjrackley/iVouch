@@ -36,9 +36,37 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def repo_root() -> Path:
+    """Repository root: the directory containing ``lite/``, ``AGENTS.md``.
+
+    Derived from this file's location by searching upward for the
+    ``AGENTS.md`` marker, so it never depends on the process CWD.
+    Falls back to the fixed offset when no marker is found.
+    """
+    here = Path(__file__).resolve()
+    for candidate in (here.parent, *here.parents):
+        if (candidate / "AGENTS.md").is_file() and (
+            candidate / "lite"
+        ).is_dir():
+            return candidate
+    return here.parents[3]
+
+
+def resolve_repo_relative(raw) -> Path:
+    """Anchor a config data-dir value at the repository root.
+
+    Absolute values pass through unchanged; relative values resolve
+    against :func:`repo_root` regardless of CWD.
+    """
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        return candidate
+    return repo_root() / raw
+
+
 def default_db_path() -> Path:
     """Default database file: ``lite/data/ivouch.db``."""
-    return Path(__file__).resolve().parents[2] / "data" / "ivouch.db"
+    return repo_root() / "lite" / "data" / "ivouch.db"
 
 
 def connect(path) -> sqlite3.Connection:

@@ -39,6 +39,7 @@ from lite.app.checks import provenance as provenance_checks
 from lite.app.checks.fusion import AllChecks
 from lite.app.config import load_config
 from lite.app.server.db import create_report, find_report
+from lite.app.server.db import repo_root as _shared_repo_root
 
 MOCK_REJECTION_DETAIL = "upload could not be accepted"
 MOCK_DEMO_NOTICE = (
@@ -50,7 +51,7 @@ UNSUPPORTED_DETAIL = "unsupported_file"
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    return _shared_repo_root()
 
 
 def load_mock_hashes() -> set[str]:

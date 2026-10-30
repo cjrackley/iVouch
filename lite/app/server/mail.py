@@ -17,17 +17,14 @@ def resolve_mail_dir(explicit=None) -> Path:
     ``explicit`` (a test tmp dir, or ``app.state.mail_dir``) wins;
     otherwise the value comes from ``lite/config.yaml`` via the loader
     in ``lite/app/config.py``. Relative config values resolve against
-    the ``lite/`` directory.
+    the repository root (never CWD).
     """
     if explicit is not None:
         return Path(explicit)
     from lite.app.config import load_config
+    from lite.app.server.db import resolve_repo_relative
 
-    raw = load_config().console_mail_dir
-    candidate = Path(raw)
-    if candidate.is_absolute():
-        return candidate
-    return Path(__file__).resolve().parents[2] / raw
+    return resolve_repo_relative(load_config().console_mail_dir)
 
 
 def _safe_stem(email: str) -> str:

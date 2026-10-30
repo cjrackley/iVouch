@@ -136,4 +136,29 @@ Commit: (recorded after commit)
 
 # Spec status: 4/4 ACCEPTED (docs); open: orchestrator fresh-checkout run
 
+### Task lite-spec-4 4.4 implement, attempt 1 (data-dir fix)
+- Objective: data-dir resolution fix (gate-found defect)
+- Touched: lite/app/server/db.py (edited), lite/app/server/mail.py (edited), lite/app/server/api.py (edited), lite/app/server/pipeline.py (edited)
+- Created: lite/tests/test_datadirs.py, lite/work/checkpoints/spec-4-datadirs.md
+- Tests: python -m pytest lite/tests -q -- 157 passed (149 prior + 8 new)
+- Test integrity: no locked-path edits; new tests are pure path asserts plus one no-request TestClient state check; failures fixed in code
+- Dependencies: none added
+- Resources: within 60-min budget; one legitimate require_escalated approval used for the socket-blocking sandbox (approved, full suite green)
+- Checkpoint: lite/work/checkpoints/spec-4-datadirs.md
+- Mocks/blocked: none
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict: ACCEPTED (dispatch native, model inherit).
+Gates: (1) diff clean — 4 server files (shared repo_root helper
++ routed resolutions) + 1 new test file + orchestrator log.
+(2) tests run in-session (escalated path for sockets): 157 passed
+(8 new: repo-anchor, CWD independence, absolute passthrough,
+TestClient visibility). (3) integrity: new test file only, real
+path asserts. (4) honesty: no mocks; fixes the live-observed
+lite/lite doubling. (5) log entry complete. Only mail.py was
+truly wrong; db/api/pipeline routed through the helper for
+consistency.
+Commit: (recorded after commit)
+
 <!-- END-OF-LOG -->

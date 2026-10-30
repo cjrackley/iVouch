@@ -47,8 +47,10 @@ from lite.app.server.geo import display_point
 from lite.app.server.db import (
     connect,
     create_account,
+    default_db_path,
     get_account_by_email,
     init_db,
+    repo_root,
 )
 from lite.app.server.mail import resolve_mail_dir, write_verification_email
 
@@ -104,10 +106,6 @@ def _check_login_ratelimit(request: Request) -> None:
         )
     recent.append(now)
     store[ip] = recent
-
-
-def _lite_dir() -> Path:
-    return Path(__file__).resolve().parents[2]
 
 
 def normalize_email(email: str) -> str:
@@ -170,7 +168,7 @@ def create_app(
     """
     app = FastAPI(title="iVouch Lite")
     app.state.db_path = str(db_path) if db_path is not None else str(
-        _lite_dir() / "data" / "ivouch.db"
+        default_db_path()
     )
     app.state.mail_dir = (
         str(mail_dir)
@@ -180,7 +178,7 @@ def create_app(
     app.state.uploads_dir = (
         str(uploads_dir)
         if uploads_dir is not None
-        else str(_lite_dir() / "data" / "uploads")
+        else str(repo_root() / "lite" / "data" / "uploads")
     )
     app.state.clip_encoder = clip_encoder
     app.state.login_attempts = {}
