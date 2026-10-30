@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Review report {{ report.report_id }}</h1>
+{% if needs_review %}
+<p class="banner">This report needs human review.</p>
+{% endif %}
+{% if report.correction %}
+<p class="banner">Corrected by reviewer: incident {{ report.correction.incident_top }}, severity {{ report.correction.severity }}.</p>
+{% endif %}
+<p class="notice">Demo build — results need human review and are not evidence of authenticity.</p>
+<p class="notice">Visible to logged-in demo users. Your email and exact location are never shared.</p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<dl>
+<dt>Assessment</dt>
+<dd>{{ report.verdict }}</dd>
+<dt>Confidence</dt>
+<dd>{{ report.confidence }}</dd>
+<dt>Submitted</dt>
+<dd>{{ report.created_at }}</dd>
+</dl>
+<h2>Incident probabilities</h2>
+<ul>
+{% for name, prob in report.incident_probs.items() %}
+<li>{{ name }}: {{ prob }}</li>
+{% endfor %}
+</ul>
+<h2>Severity probabilities</h2>
+<ul>
+{% for name, prob in report.severity_probs.items() %}
+<li>{{ name }}: {{ prob }}</li>
+{% endfor %}
+</ul>
+<h2>Provenance flags</h2>
+{% if provenance %}
+<ul>
+{% for name, value in provenance.items() %}
+<li>{{ name }}: {{ value }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No provenance flags stored.</p>
+{% endif %}
+<h2>Duplicate reports</h2>
+{% if duplicates %}
+<ul>
+{% for dup_id in duplicates %}
+<li><a href="/review/{{ dup_id }}">Report {{ dup_id }}</a></li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No exact duplicates found.</p>
+{% endif %}
+<h2>Claim text</h2>
+{% if report.claim_text %}
+<p>{{ report.claim_text }}</p>
+{% if "claim_mismatch" in report.reasons %}
+<p>The automated check flagged a claim mismatch.</p>
+{% endif %}
+{% else %}
+<p>No claim text provided.</p>
+{% endif %}
+<h2>Fusion reasons</h2>
+<ul>
+{% for reason in report.reasons %}
+<li>{{ reason }}</li>
+{% endfor %}
+</ul>
+<h2>Review history</h2>
+{% if history %}
+<ul>
+{% for entry in history %}
+<li>{{ entry.action }} at {{ entry.time }} (was {{ entry.before }}, now {{ entry.after }})</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No review actions yet.</p>
+{% endif %}
+<h2>Review actions</h2>
+<form method="post" action="/review/{{ report.report_id }}/actions">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="action" value="confirm">
+<button type="submit">Confirm</button>
+</form>
+<form method="post" action="/review/{{ report.report_id }}/actions">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="action" value="correct">
+<label>Incident type
+<select name="incident">
+{% for label in incident_labels %}
+<option value="{{ label }}">{{ label }}</option>
+{% endfor %}
+</select>
+</label>
+<label>Severity
+<select name="severity">
+{% for label in severity_labels %}
+<option value="{{ label }}">{{ label }}</option>
+{% endfor %}
+</select>
+</label>
+<button type="submit">Correct</button>
+</form>
+<form method="post" action="/review/{{ report.report_id }}/actions">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="action" value="dismiss">
+<label>Note (optional)
+<input type="text" name="note" value="">
+</label>
+<button type="submit">Dismiss</button>
+</form>
+<p><a href="/review">Back to the review queue</a></p>
+{% endblock %}

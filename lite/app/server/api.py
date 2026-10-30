@@ -145,6 +145,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(upload_router)
     app.include_router(retrieval_router)
+    app.include_router(review_router)
     return app
 
 
@@ -733,6 +734,228 @@ def get_photo(
             content=path.read_bytes(),
             media_type=_photo_media_type(path),
         )
+
+
+review_router = APIRouter(tags=["review"])
+
+REVIEW_ACTIONS = frozenset({"confirm", "correct", "dismiss"})
+
+
+class ReviewActionRequest(BaseModel):
+    """Body for ``POST /review/{id}/actions`` (unknown keys ignored)."""
+
+    action: str
+    incident: Optional[str] = None
+    severity: Optional[str] = None
+    note: Optional[str] = None
+
+
+def _require_reviewer(account: dict) -> dict:
+    """Raise 403 unless ``account`` carries the reviewer flag."""
+    if not account.get("reviewer"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reviewer access required.",
+        )
+    return account
+
+
+def _check_tops(check) -> tuple:
+    """Return ``(incident_top, severity_top)`` for a check_results row."""
+    incident = dict(json.loads(check["incident_probs"]))
+    severity = dict(json.loads(check["severity_probs"]))
+    return (
+        max(incident, key=incident.get) if incident else None,
+        max(severity, key=severity.get) if severity else None,
+    )
+
+
+def effective_labels(conn, report_id: int) -> dict:
+    """Return the effective incident/severity labels for ``report_id``.
+
+    Reads the stored check outputs plus the latest ``correct`` review
+    action (never mutates anything). Shape (shared with the spec-4
+    4.1 review-detail page and the owner result banner carry-over)::
+
+        {"incident_top": str | None,
+         "severity": str | None,
+         "corrected": bool,
+         "correction": None |
+            {"incident_top": str, "severity": str,
+             "reviewer": str | None, "time": str}}
+    """
+    incident_top, severity_top = None, None
+    check = _check_result(conn, report_id)
+    if check is not None:
+        incident_top, severity_top = _check_tops(check)
+    row = conn.execute(
+        "SELECT ra.*, a.email AS reviewer_email FROM review_actions ra"
+        " LEFT JOIN accounts a ON a.id = ra.reviewer_account_id"
+        " WHERE ra.report_id = ? AND ra.action = 'correct'"
+        " ORDER BY ra.id DESC LIMIT 1",
+        (report_id,),
+    ).fetchone()
+    if row is None:
+        return {
+            "incident_top": incident_top,
+            "severity": severity_top,
+            "corrected": False,
+            "correction": None,
+        }
+    after = json.loads(row["after"]) if row["after"] else {}
+    return {
+        "incident_top": after.get("incident_top", incident_top),
+        "severity": after.get("severity", severity_top),
+        "corrected": True,
+        "correction": {
+            "incident_top": after.get("incident_top"),
+            "severity": after.get("severity"),
+            "reviewer": row["reviewer_email"],
+            "time": row["created_at"],
+        },
+    }
+
+
+def _action_history(conn, report_id: int) -> list:
+    """Return every review action for ``report_id``, oldest first."""
+    rows = conn.execute(
+        "SELECT ra.*, a.email AS reviewer_email FROM review_actions ra"
+        " LEFT JOIN accounts a ON a.id = ra.reviewer_account_id"
+        " WHERE ra.report_id = ? ORDER BY ra.id",
+        (report_id,),
+    ).fetchall()
+    return [
+        {
+            "reviewer": row["reviewer_email"],
+            "action": row["action"],
+            "before": json.loads(row["before"]) if row["before"] else None,
+            "after": json.loads(row["after"]) if row["after"] else None,
+            "time": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+@review_router.post("/review/{report_id}/actions")
+def review_action(
+    report_id: int,
+    payload: ReviewActionRequest,
+    request: Request,
+    account: dict = Depends(get_current_account),
+):
+    """Record one reviewer action (confirm/correct/dismiss).
+
+    Reviewers only (403 otherwise); 404 when no accepted report
+    exists. ``correct`` requires an incident label from the config
+    taxonomy and a severity (else 422); ``confirm``/``dismiss`` keep
+    the current effective values and ignore extras. Writes exactly
+    one ``review_actions`` row (plus one ``review_action`` audit
+    event) and never touches ``check_results``.
+    """
+    _require_reviewer(account)
+    with _connection(request) as conn:
+        found = _accepted_report(conn, report_id)
+        if found is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found.",
+            )
+        if payload.action not in REVIEW_ACTIONS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"action must be one of {sorted(REVIEW_ACTIONS)}.",
+            )
+        cfg = load_config()
+        if payload.action == "correct":
+            if payload.incident not in cfg.incident_prompts:
+                raise HTTPException(
+                    status_code=422,
+                    detail="correct requires incident from the taxonomy.",
+                )
+            if payload.severity not in cfg.severity_prompts:
+                raise HTTPException(
+                    status_code=422,
+                    detail="correct requires severity minor|moderate|severe.",
+                )
+        before_values = effective_labels(conn, report_id)
+        before = {
+            "incident_top": before_values["incident_top"],
+            "severity": before_values["severity"],
+        }
+        if payload.action == "correct":
+            after = {
+                "incident_top": payload.incident,
+                "severity": payload.severity,
+            }
+        else:
+            after = dict(before)
+        now = auth_helpers.utcnow_iso()
+        conn.execute(
+            "INSERT INTO review_actions (report_id, reviewer_account_id,"
+            " action, before, after, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                report_id,
+                account["id"],
+                payload.action,
+                json.dumps(before),
+                json.dumps(after),
+                now,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO audit_events (kind, actor_account_id, report_id,"
+            " detail, created_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                "review_action",
+                account["id"],
+                report_id,
+                json.dumps(
+                    {
+                        "action": payload.action,
+                        "before": before,
+                        "after": after,
+                    }
+                ),
+                now,
+            ),
+        )
+        conn.commit()
+    return {"ok": True, "action": payload.action, "report_id": report_id}
+
+
+@review_router.get("/review/api/{report_id}")
+def review_detail(
+    report_id: int,
+    request: Request,
+    account: dict = Depends(get_current_account),
+):
+    """Reviewer JSON detail: shared report fields plus review state.
+
+    Shape: the shared (non-owner) report payload plus ``correction``
+    (None when uncorrected, else ``{incident_top, severity, reviewer,
+    time}``), ``corrected`` (bool), and ``history`` (list of
+    ``{reviewer, action, before, after, time}``, oldest first). Never
+    includes the uploader's email. Reviewers only (403); 404 when no
+    accepted report exists.
+    """
+    _require_reviewer(account)
+    with _connection(request) as conn:
+        found = _accepted_report(conn, report_id)
+        if found is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found.",
+            )
+        report, check = found
+        payload = _report_payload(
+            report, check, _claim_text(conn, report_id), owner=False
+        )
+        current = effective_labels(conn, report_id)
+        payload["corrected"] = current["corrected"]
+        payload["correction"] = current["correction"]
+        payload["history"] = _action_history(conn, report_id)
+        return payload
 
 
 # Module-level app for serving (uvicorn lite.app.server.api:app).

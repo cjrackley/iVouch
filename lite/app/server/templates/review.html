@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Review queue</h1>
+<p>Reviewer-only queue of accepted demo reports. Results need human
+review and are not evidence of authenticity.</p>
+{% if reports %}
+<ul>
+{% for item in reports %}
+<li><a href="/review/{{ item.report_id }}">Report {{ item.report_id }}</a>
+({{ item.verdict }}, confidence {{ item.confidence }}){% if item.needs_review %} — needs human review{% endif %}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No reports yet.</p>
+{% endif %}
+{% endblock %}

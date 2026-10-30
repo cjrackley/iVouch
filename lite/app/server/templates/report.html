@@ -4,6 +4,9 @@
 {% if report.needs_review %}
 <p class="banner">This report needs human review.</p>
 {% endif %}
+{% if correction %}
+<p class="banner">Corrected by reviewer: incident {{ correction.incident_top }}, severity {{ correction.severity }}.</p>
+{% endif %}
 <p class="notice">Demo build — results need human review and are not evidence of authenticity.</p>
 <p class="notice">Visible to logged-in demo users. Your email and exact location are never shared.</p>
 <img class="report-photo" src="{{ report.photo_url }}" alt="Uploaded photo for report {{ report.report_id }}">

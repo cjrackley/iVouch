@@ -88,6 +88,7 @@ byte-for-byte as before.
 
 from __future__ import annotations
 
+import json
 import secrets
 import uuid
 from contextlib import contextmanager
@@ -710,6 +711,10 @@ def report_detail(request: Request, report_id: int):
             )
         raise
     name, prob = _top_incident(body)
+    with _page_connection(request) as conn:
+        correction = api_module.effective_labels(conn, report_id)[
+            "correction"
+        ]
     return _render(
         "report.html",
         {
@@ -717,6 +722,7 @@ def report_detail(request: Request, report_id: int):
             "report": body,
             "top_incident": name,
             "top_incident_prob": prob,
+            "correction": correction,
         },
     )
 
@@ -799,3 +805,227 @@ def photo_cookie_bridge(request: Request, report_id: int):
     if account is None:
         account = api_module.get_current_account(request)
     return api_module.get_photo(report_id, request, account)
+
+
+def _review_denied() -> Response:
+    """Render the reviewer-only 403 page (never a login redirect)."""
+    return _render(
+        "message.html",
+        {
+            "title": "Not allowed",
+            "heading": "Not allowed",
+            "message": "Reviewer access required.",
+            "back": "/",
+            "back_label": "Home",
+        },
+        status=403,
+    )
+
+
+def _reviewer_session(request: Request) -> dict | None:
+    """Session account when it carries the reviewer flag, else None."""
+    account = _account_for_session(request)
+    if account is None or not account.get("reviewer"):
+        return None
+    return account
+
+
+def _review_queue_items(request: Request) -> list:
+    """Accepted reports: needs-review first, then newest.
+
+    Reads only the report id, stored verdict, and stored incident
+    probabilities (never the uploader email or exact coordinates).
+    """
+    with _page_connection(request) as conn:
+        rows = conn.execute(
+            "SELECT r.id, c.verdict, c.incident_probs"
+            " FROM reports r"
+            " JOIN check_results c ON c.report_id = r.id"
+            " ORDER BY (c.verdict != 'likely-real') DESC, r.id DESC"
+        ).fetchall()
+        items = []
+        for row in rows:
+            incident = json.loads(row["incident_probs"] or "{}")
+            items.append(
+                {
+                    "report_id": row["id"],
+                    "verdict": row["verdict"],
+                    "confidence": (
+                        max(incident.values()) if incident else 0.0
+                    ),
+                    "needs_review": row["verdict"] != "likely-real",
+                }
+            )
+    return items
+
+
+def _render_review_detail(
+    request: Request,
+    report_id: int,
+    account: dict,
+    error: str | None = None,
+    status: int = 200,
+):
+    """Render the reviewer detail page (or the queue-backed 404 page).
+
+    Every display value comes from the stored check outputs via the
+    spec-4.2 reviewer detail implementation (incident/severity
+    probabilities, claim text, fusion reasons, original demo verdict,
+    correction, history) plus direct reads of the stored provenance
+    flags and exact-duplicate links. Nothing is recomputed here, and
+    the uploader's email is never selected. History entries carry
+    action, before/after values, and time only (no reviewer emails).
+    """
+    from lite.app.server import api as api_module
+
+    try:
+        body = api_module.review_detail(report_id, request, account)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found(
+                back="/review", back_label="Back to the review queue"
+            )
+        raise
+    with _page_connection(request) as conn:
+        check = conn.execute(
+            "SELECT provenance FROM check_results WHERE report_id = ?",
+            (report_id,),
+        ).fetchone()
+        provenance = (
+            json.loads(check["provenance"] or "{}")
+            if check is not None and check["provenance"]
+            else {}
+        )
+        owner = conn.execute(
+            "SELECT sha256 FROM reports WHERE id = ?", (report_id,)
+        ).fetchone()
+        duplicates: list = []
+        if owner is not None and owner["sha256"]:
+            duplicates = [
+                row["id"]
+                for row in conn.execute(
+                    "SELECT id FROM reports WHERE sha256 = ?"
+                    " AND id != ? ORDER BY id",
+                    (owner["sha256"], report_id),
+                ).fetchall()
+            ]
+    cfg = load_config()
+    history = [
+        {
+            "action": entry["action"],
+            "before": entry["before"],
+            "after": entry["after"],
+            "time": entry["time"],
+        }
+        for entry in body.get("history", [])
+    ]
+    token, is_new = _csrf_issue(request)
+    return _render(
+        "review_detail.html",
+        {
+            "title": f"Review report {body['report_id']}",
+            "report": body,
+            "needs_review": body["verdict"] != "likely-real",
+            "provenance": provenance,
+            "duplicates": duplicates,
+            "history": history,
+            "incident_labels": sorted(cfg.incident_prompts),
+            "severity_labels": sorted(cfg.severity_prompts),
+            "csrf_token": token,
+            "error": error,
+        },
+        status=status,
+        csrf_new=token if is_new else None,
+    )
+
+
+@pages_router.get("/review")
+def review_queue(request: Request):
+    """Reviewer queue: needs-review first, then newest (403 otherwise)."""
+    if _reviewer_session(request) is None:
+        return _review_denied()
+    return _render(
+        "review.html",
+        {
+            "title": "Review queue",
+            "reports": _review_queue_items(request),
+        },
+    )
+
+
+@pages_router.get("/review/{report_id}")
+def review_detail_page(request: Request, report_id: int):
+    """Reviewer detail: stored check outputs plus action forms."""
+    account = _reviewer_session(request)
+    if account is None:
+        return _review_denied()
+    return _render_review_detail(request, report_id, account)
+
+
+@pages_router.post("/review/{report_id}/actions")
+async def review_action_submit(request: Request, report_id: int):
+    """Record one reviewer action from a form or a JSON client.
+
+    This router is included before the spec-4.2 review router, so
+    this handler is reached first for ``POST /review/{id}/actions``.
+    Bearer JSON clients are delegated to the spec-4.2
+    ``review_action`` implementation unchanged (same 401/403/404/422
+    contract); browser forms (cookie session plus CSRF) are
+    translated into the same implementation, so the one-row audit
+    rule has exactly one implementation. A finished form action
+    redirects to the detail page; a rejected one re-renders it with
+    an error.
+    """
+    from lite.app.server import api as api_module
+
+    if "application/json" in request.headers.get("content-type", ""):
+        account = api_module.get_current_account(request)
+        try:
+            payload = api_module.ReviewActionRequest(
+                **(await request.json())
+            )
+        except (ValidationError, ValueError):
+            raise HTTPException(
+                status_code=422, detail="Invalid action body."
+            ) from None
+        return api_module.review_action(
+            report_id, payload, request, account
+        )
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _reviewer_session(request)
+    if account is None:
+        return _review_denied()
+
+    def _text(name: str):
+        value = form.get(name)
+        if not isinstance(value, str) or not value.strip():
+            return None
+        return value.strip()
+
+    def _fail(message: str):
+        return _render_review_detail(
+            request, report_id, account, error=message, status=422
+        )
+
+    try:
+        payload = api_module.ReviewActionRequest(
+            action=_text("action") or "",
+            incident=_text("incident"),
+            severity=_text("severity"),
+            note=_text("note"),
+        )
+    except ValidationError:
+        return _fail("Choose an action and try again.")
+    try:
+        api_module.review_action(report_id, payload, request, account)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found(
+                back="/review", back_label="Back to the review queue"
+            )
+        if exc.status_code == 422:
+            return _fail(str(exc.detail))
+        raise
+    return _redirect(f"/review/{report_id}")
