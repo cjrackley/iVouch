@@ -16,6 +16,12 @@ objective 3.2: ``POST /upload`` (browser upload flow),
 ``GET /map`` (community map, HTML for browsers);
 objective 6.6: ``GET /saved`` (saved places, HTML for browsers),
 ``POST /saved`` (save toggle-add), ``POST /saved/{id}/unsave``;
+objective 6.4: ``POST /vouches`` (vouch toggle-add),
+``POST /vouches/{id}/unvouch`` (remove),
+``POST /comments`` (post one plain-text comment),
+``GET /api/reports/{id}/comments`` (list, oldest first),
+``POST /reports/{id}/edit`` (owner-only claim-text edit),
+``POST /reports/{id}/delete`` (owner-only delete, confirm-once);
 ``GET /api/photos/{id}`` (cookie-aware bridge, delegates without one);
 ``GET /static/style.css``.
 
@@ -693,7 +699,8 @@ def report_detail(request: Request, report_id: int):
 
     Reads every display value from the API JSON payload. A
     ``needs_review`` verdict shows the human-review banner
-    prominently.
+    prominently. The HTML layout (hero, card, vouches, comments,
+    sticky actions, owner controls) is shared with ``shared.html``.
     """
     if not _wants_html(request):
         from lite.app.server import api as api_module
@@ -713,21 +720,10 @@ def report_detail(request: Request, report_id: int):
                 back="/reports", back_label="Back to your reports"
             )
         raise
-    name, prob = _top_incident(body)
-    with _page_connection(request) as conn:
-        correction = api_module.effective_labels(conn, report_id)[
-            "correction"
-        ]
-    return _render(
-        "report.html",
-        {
-            "title": f"Report {body['report_id']}",
-            "report": body,
-            "top_incident": name,
-            "top_incident_prob": prob,
-            "correction": correction,
-        },
+    context, csrf_new = _detail_context(
+        request, account, body, report_id, owner_view=True
     )
+    return _render("report.html", context, csrf_new=csrf_new)
 
 
 @pages_router.get("/shared/{report_id}")
@@ -754,16 +750,546 @@ def shared_detail(request: Request, report_id: int):
         if exc.status_code == 404:
             return _not_found()
         raise
-    name, prob = _top_incident(body)
-    return _render(
-        "shared.html",
-        {
-            "title": f"Shared report {body['report_id']}",
-            "report": body,
-            "top_incident": name,
-            "top_incident_prob": prob,
-        },
+    context, csrf_new = _detail_context(
+        request, account, body, report_id, owner_view=False
     )
+    return _render("shared.html", context, csrf_new=csrf_new)
+
+
+COMMENT_BODY_MAX = 500
+CLAIM_EDIT_MAX = 2000
+
+
+def _accepted_or_404(request: Request, account: dict, report_id) -> dict:
+    """Shared payload for an accepted report, else 404.
+
+    Only accepted reports are vouchable, commentable, and savable:
+    rejected uploads create no report row and rows without a check
+    row answer 404 here, for every caller.
+    """
+    from lite.app.server import api as api_module
+
+    if isinstance(report_id, bool) or not isinstance(report_id, int):
+        raise HTTPException(status_code=404, detail="Not found.")
+    try:
+        return api_module.get_shared_report(report_id, request, account)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=404, detail="Not found."
+            ) from None
+        raise
+
+
+def _owned_report_or_raise(
+    request: Request, account: dict, report_id
+) -> dict:
+    """Owner payload for the owner's accepted report.
+
+    Raises 404 when the report is missing or not accepted, 403 when a
+    different account owns it. Non-owner form POSTs to the edit and
+    delete endpoints answer 403 through this helper.
+    """
+    from lite.app.server import api as api_module
+
+    if isinstance(report_id, bool) or not isinstance(report_id, int):
+        raise HTTPException(status_code=404, detail="Not found.")
+    with _page_connection(request) as conn:
+        row = conn.execute(
+            "SELECT account_id FROM reports WHERE id = ?",
+            (report_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Not found.")
+        if row["account_id"] != account["id"]:
+            raise HTTPException(status_code=403, detail="Not allowed.")
+        check = conn.execute(
+            "SELECT report_id FROM check_results WHERE report_id = ?",
+            (report_id,),
+        ).fetchone()
+        if check is None:
+            raise HTTPException(status_code=404, detail="Not found.")
+        return api_module.get_report(report_id, request, account)
+
+
+def _owner_denied() -> Response:
+    """Render the owner-only 403 page (never a login redirect)."""
+    return _render(
+        "message.html",
+        {
+            "title": "Not allowed",
+            "heading": "Not allowed",
+            "message": "Only the owner can change this report.",
+            "back": "/",
+            "back_label": "Home",
+        },
+        status=403,
+    )
+
+
+def _detail_context(
+    request: Request,
+    account: dict,
+    body: dict,
+    report_id: int,
+    *,
+    owner_view: bool,
+    error: str | None = None,
+):
+    """Template context for the restyled detail layout (both pages).
+
+    The title is the claim text with the incident type as fallback
+    (the user-editable title field is objective 6.5, not here).
+    Vouch counts are derived, never stored. Returns
+    ``(context, csrf_new)`` for :func:`_render`.
+    """
+    from lite.app.server import db as db_module
+
+    name, prob = _top_incident(body)
+    claim = body.get("claim_text")
+    title = claim or name or f"Report {report_id}"
+    token, is_new = _csrf_issue(request)
+    with _page_connection(request) as conn:
+        owner_row = conn.execute(
+            "SELECT account_id FROM reports WHERE id = ?",
+            (report_id,),
+        ).fetchone()
+        is_owner = (
+            owner_row is not None
+            and owner_row["account_id"] == account["id"]
+        )
+        vouched = db_module.is_vouched(conn, account["id"], report_id)
+        vouch_count = db_module.count_vouches(conn, report_id)
+        vouches = db_module.list_vouches(conn, report_id)
+        comments = db_module.list_comments(conn, report_id)
+        saved = db_module.is_saved(conn, account["id"], report_id)
+        correction = None
+        if owner_view:
+            from lite.app.server import api as api_module
+
+            correction = api_module.effective_labels(conn, report_id)[
+                "correction"
+            ]
+    context = {
+        "title": title,
+        "report": body,
+        "top_incident": name,
+        "top_incident_prob": prob,
+        "correction": correction,
+        "csrf_token": token,
+        "is_owner": is_owner,
+        "is_saved": saved,
+        "vouched": vouched,
+        "vouch_count": vouch_count,
+        "vouches": vouches,
+        "comments": comments,
+        "error": error,
+    }
+    return context, (token if is_new else None)
+
+
+def _render_detail_error(
+    request: Request,
+    account: dict,
+    report_id: int,
+    message: str,
+    status: int = 422,
+):
+    """Re-render the shared detail page with an action error."""
+    body = _accepted_or_404(request, account, report_id)
+    context, csrf_new = _detail_context(
+        request, account, body, report_id, owner_view=False, error=message
+    )
+    return _render("shared.html", context, status=status,
+                   csrf_new=csrf_new)
+
+
+def _render_owner_error(
+    request: Request,
+    account: dict,
+    body: dict,
+    report_id: int,
+    message: str,
+    status: int = 422,
+):
+    """Re-render the owner detail page with an action error."""
+    context, csrf_new = _detail_context(
+        request, account, body, report_id, owner_view=True, error=message
+    )
+    return _render("report.html", context, status=status,
+                   csrf_new=csrf_new)
+
+
+def _delete_report_everywhere(
+    conn, account_id: int, report_id: int, uploads_dir
+) -> None:
+    """Delete one owned report row plus its photo files.
+
+    Row deletion cascades to ``check_results``/claims/saves/vouches/
+    comments via the schema's ``ON DELETE CASCADE``. Ownership is
+    enforced by the caller (403/404 before this runs).
+    """
+    account_dir = (
+        Path(uploads_dir) / str(account_id) if uploads_dir else None
+    )
+    if account_dir is not None and account_dir.is_dir():
+        for candidate in sorted(account_dir.glob(f"{report_id}.*")):
+            if candidate.is_file():
+                candidate.unlink()
+    conn.execute(
+        "DELETE FROM reports WHERE id = ? AND account_id = ?",
+        (report_id, account_id),
+    )
+    conn.commit()
+
+
+@pages_router.post("/vouches")
+async def vouch_add(request: Request):
+    """Vouch one accepted report (idempotent add; form or JSON).
+
+    Browser forms (cookie session plus CSRF) redirect to the shared
+    page; JSON clients (Bearer [REDACTED]) get ``{"ok": true, "vouched": true,
+    "vouch_count": n}``. Vouching a missing or not-accepted report
+    answers 404 in both modes. One vouch per account per report: a
+    repeat vouch keeps a single row, so counts never double-count.
+    """
+    from lite.app.server import api as api_module
+    from lite.app.server import db as db_module
+
+    if "application/json" in request.headers.get("content-type", ""):
+        account = api_module.get_current_account(request)
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid vouch body."
+            ) from None
+        report_id = (
+            payload.get("report_id")
+            if isinstance(payload, dict)
+            else None
+        )
+        _accepted_or_404(request, account, report_id)
+        with _page_connection(request) as conn:
+            db_module.vouch_report(
+                conn, account_id=account["id"], report_id=report_id
+            )
+            count = db_module.count_vouches(conn, report_id)
+        return {
+            "ok": True,
+            "vouched": True,
+            "report_id": report_id,
+            "vouch_count": count,
+        }
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    report_id = _saved_report_id(form.get("report_id"))
+    if report_id is None:
+        return _not_found(back="/map", back_label="Back to map")
+    try:
+        _accepted_or_404(request, account, report_id)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found(back="/map", back_label="Back to map")
+        raise
+    with _page_connection(request) as conn:
+        db_module.vouch_report(
+            conn, account_id=account["id"], report_id=report_id
+        )
+    return _redirect(f"/shared/{report_id}")
+
+
+@pages_router.post("/vouches/{report_id}/unvouch")
+async def vouch_remove(request: Request, report_id: int):
+    """Remove one vouch; a missing vouch is a no-op success.
+
+    Browser forms (cookie session plus CSRF) redirect to the shared
+    page; JSON clients (Bearer [REDACTED]) get ``{"ok": true, "vouched": false,
+    "vouch_count": n}``. Unvouching a missing or not-accepted report
+    answers 404 in both modes.
+    """
+    from lite.app.server import api as api_module
+    from lite.app.server import db as db_module
+
+    if "application/json" in request.headers.get("content-type", ""):
+        account = api_module.get_current_account(request)
+        _accepted_or_404(request, account, report_id)
+        with _page_connection(request) as conn:
+            db_module.unvouch_report(
+                conn, account_id=account["id"], report_id=report_id
+            )
+            count = db_module.count_vouches(conn, report_id)
+        return {
+            "ok": True,
+            "vouched": False,
+            "report_id": report_id,
+            "vouch_count": count,
+        }
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    try:
+        _accepted_or_404(request, account, report_id)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found(back="/map", back_label="Back to map")
+        raise
+    with _page_connection(request) as conn:
+        db_module.unvouch_report(
+            conn, account_id=account["id"], report_id=report_id
+        )
+    return _redirect(f"/shared/{report_id}")
+
+
+@pages_router.post("/comments")
+async def comment_add(request: Request):
+    """Post one plain-text comment on an accepted report.
+
+    Browser forms (cookie session plus CSRF) redirect to the shared
+    page; JSON clients (Bearer [REDACTED]) get the stored comment back. Empty
+    bodies and bodies over 500 characters answer 422 in both modes;
+    commenting on a missing or not-accepted report answers 404.
+    Comments render as plain text (the templates escape HTML).
+    """
+    from lite.app.server import api as api_module
+    from lite.app.server import db as db_module
+
+    def _check(body_text) -> str | None:
+        """Return an error message, or None when ``body_text`` posts."""
+        if not isinstance(body_text, str) or not body_text.strip():
+            return "Write a comment before posting."
+        if len(body_text.strip()) > COMMENT_BODY_MAX:
+            return (
+                "Comments are limited to"
+                f" {COMMENT_BODY_MAX} characters."
+            )
+        return None
+
+    if "application/json" in request.headers.get("content-type", ""):
+        account = api_module.get_current_account(request)
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid comment body."
+            ) from None
+        fields = payload if isinstance(payload, dict) else {}
+        report_id = fields.get("report_id")
+        _accepted_or_404(request, account, report_id)
+        error = _check(fields.get("body"))
+        if error is not None:
+            raise HTTPException(status_code=422, detail=error)
+        text = str(fields.get("body")).strip()
+        with _page_connection(request) as conn:
+            comment_id = db_module.add_comment(
+                conn,
+                report_id=report_id,
+                account_id=account["id"],
+                body=text,
+            )
+            stored = [
+                entry
+                for entry in db_module.list_comments(conn, report_id)
+                if entry["id"] == comment_id
+            ][0]
+        return {"ok": True, "report_id": report_id, "comment": stored}
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    report_id = _saved_report_id(form.get("report_id"))
+    if report_id is None:
+        return _not_found(back="/map", back_label="Back to map")
+    try:
+        _accepted_or_404(request, account, report_id)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found(back="/map", back_label="Back to map")
+        raise
+    error = _check(
+        form.get("body") if isinstance(form.get("body"), str) else None
+    )
+    if error is not None:
+        return _render_detail_error(request, account, report_id, error)
+    text = str(form.get("body")).strip()
+    with _page_connection(request) as conn:
+        db_module.add_comment(
+            conn,
+            report_id=report_id,
+            account_id=account["id"],
+            body=text,
+        )
+    return _redirect(f"/shared/{report_id}")
+
+
+@pages_router.get("/api/reports/{report_id}/comments")
+def comment_list(request: Request, report_id: int):
+    """List one accepted report's comments, newest last (login only).
+
+    Bodies are plain text; no author emails appear. 404 when no
+    accepted report exists.
+    """
+    from lite.app.server import api as api_module
+    from lite.app.server import db as db_module
+
+    account = api_module.get_current_account(request)
+    _accepted_or_404(request, account, report_id)
+    with _page_connection(request) as conn:
+        return {
+            "report_id": report_id,
+            "comments": db_module.list_comments(conn, report_id),
+        }
+
+
+@pages_router.post("/reports/{report_id}/edit")
+async def report_edit_submit(request: Request, report_id: int):
+    """Edit the claim-text description of one owned accepted report.
+
+    Owner only: other accounts answer 403 in both modes (anonymous
+    browsers go to ``/login``, anonymous JSON callers get 401).
+    Only the description changes; the incident type and every check
+    output stay as stored. Browser forms redirect to the owner page;
+    JSON clients get the stored text back.
+    """
+    from lite.app.server import api as api_module
+
+    def _check(text) -> str | None:
+        if not isinstance(text, str):
+            return "Write a description before saving."
+        if len(text.strip()) > CLAIM_EDIT_MAX:
+            return (
+                "Descriptions are limited to"
+                f" {CLAIM_EDIT_MAX} characters."
+            )
+        return None
+
+    if "application/json" in request.headers.get("content-type", ""):
+        account = api_module.get_current_account(request)
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid edit body."
+            ) from None
+        fields = payload if isinstance(payload, dict) else {}
+        # Ownership + accepted proven by the fetch; body unused here.
+        _owned_report_or_raise(request, account, report_id)
+        error = _check(fields.get("claim_text"))
+        if error is not None:
+            raise HTTPException(status_code=422, detail=error)
+        text = str(fields.get("claim_text")).strip()
+        stored = text or None
+        with _page_connection(request) as conn:
+            api_module.update_claim_text(conn, report_id, stored)
+        return {
+            "ok": True,
+            "report_id": report_id,
+            "claim_text": stored,
+        }
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    try:
+        body = _owned_report_or_raise(request, account, report_id)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            return _owner_denied()
+        if exc.status_code == 404:
+            return _not_found(
+                back="/reports", back_label="Back to your reports"
+            )
+        raise
+    raw = form.get("claim_text")
+    error = _check(raw if isinstance(raw, str) else None)
+    if error is not None:
+        return _render_owner_error(
+            request, account, body, report_id, error
+        )
+    stored = str(raw).strip() or None
+    with _page_connection(request) as conn:
+        api_module.update_claim_text(conn, report_id, stored)
+    return _redirect(f"/reports/{report_id}")
+
+
+@pages_router.post("/reports/{report_id}/delete")
+async def report_delete_submit(request: Request, report_id: int):
+    """Delete one owned report after a single confirm, then the list.
+
+    Owner only: other accounts answer 403 in both modes (anonymous
+    browsers go to ``/login``, anonymous JSON callers get 401). The
+    row, its photo files, and its vouches/comments/saves go with it
+    (schema cascades); shared pages for it answer 404 afterwards.
+    """
+    from lite.app.server import api as api_module
+
+    if "application/json" in request.headers.get("content-type", ""):
+        account = api_module.get_current_account(request)
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid delete body."
+            ) from None
+        fields = payload if isinstance(payload, dict) else {}
+        _owned_report_or_raise(request, account, report_id)
+        if fields.get("confirm") != "yes":
+            raise HTTPException(
+                status_code=422,
+                detail="Confirm the deletion before continuing.",
+            )
+        with _page_connection(request) as conn:
+            _delete_report_everywhere(
+                conn,
+                account["id"],
+                report_id,
+                request.app.state.uploads_dir,
+            )
+        return {"ok": True, "report_id": report_id}
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    try:
+        body = _owned_report_or_raise(request, account, report_id)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            return _owner_denied()
+        if exc.status_code == 404:
+            return _not_found(
+                back="/reports", back_label="Back to your reports"
+            )
+        raise
+    if form.get("confirm") != "yes":
+        return _render_owner_error(
+            request,
+            account,
+            body,
+            report_id,
+            "Tick the confirmation box to delete this report.",
+            status=400,
+        )
+    with _page_connection(request) as conn:
+        _delete_report_everywhere(
+            conn,
+            account["id"],
+            report_id,
+            request.app.state.uploads_dir,
+        )
+    return _redirect("/reports")
 
 
 @pages_router.get("/shared/photos/{report_id}")

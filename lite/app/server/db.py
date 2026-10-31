@@ -5,8 +5,8 @@ framework: Lite is a fresh-install demo, so schema changes mean
 recreating the database, never a migration.
 
 Tables: ``accounts``, ``reports``, ``check_results``,
-``review_actions``, ``audit_events``, ``saves``, plus a
-``schema_version`` row.
+``review_actions``, ``audit_events``, ``saves``, ``vouches``,
+``comments``, plus a ``schema_version`` row.
 No column anywhere stores a date of birth -- only
 ``accounts.age_confirmed_at`` is kept.
 
@@ -140,6 +140,21 @@ CREATE TABLE IF NOT EXISTS saves (
     report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL,
     PRIMARY KEY (account_id, report_id)
+);
+
+CREATE TABLE IF NOT EXISTS vouches (
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (account_id, report_id)
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+    account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -299,6 +314,122 @@ def list_saved_report_ids(
             "SELECT report_id FROM saves WHERE account_id = ?"
             " ORDER BY rowid",
             (account_id,),
+        ).fetchall()
+    ]
+
+
+def vouch_report(
+    conn: sqlite3.Connection, *, account_id: int, report_id: int
+) -> bool:
+    """Vouch ``report_id`` for ``account_id``; idempotent.
+
+    Returns True when the vouch was added, False when the pair was
+    already vouched. One vouch per account per report: the
+    ``PRIMARY KEY (account_id, report_id)`` keeps the pair unique
+    even under a raced repeat insert, so counts stay derived and
+    never double-count.
+    """
+    existing = conn.execute(
+        "SELECT 1 FROM vouches WHERE account_id = ? AND report_id = ?",
+        (account_id, report_id),
+    ).fetchone()
+    if existing is not None:
+        return False
+    try:
+        conn.execute(
+            "INSERT INTO vouches (account_id, report_id, created_at)"
+            " VALUES (?, ?, ?)",
+            (account_id, report_id, _utcnow()),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Lost a race with a concurrent vouch of the same pair.
+        conn.rollback()
+        return False
+    return True
+
+
+def unvouch_report(
+    conn: sqlite3.Connection, *, account_id: int, report_id: int
+) -> bool:
+    """Remove ``account_id``'s vouch for ``report_id``.
+
+    A missing vouch is a no-op success: returns True when a row was
+    removed, False when there was nothing to remove.
+    """
+    cur = conn.execute(
+        "DELETE FROM vouches WHERE account_id = ? AND report_id = ?",
+        (account_id, report_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def is_vouched(
+    conn: sqlite3.Connection, account_id: int, report_id: int
+) -> bool:
+    """Return True when ``account_id`` vouched ``report_id``."""
+    return (
+        conn.execute(
+            "SELECT 1 FROM vouches WHERE account_id = ? AND report_id = ?",
+            (account_id, report_id),
+        ).fetchone()
+        is not None
+    )
+
+
+def count_vouches(conn: sqlite3.Connection, report_id: int) -> int:
+    """Return the derived vouch count for ``report_id``.
+
+    Counts are always derived here, never stored claims.
+    """
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM vouches WHERE report_id = ?",
+        (report_id,),
+    ).fetchone()["n"]
+
+
+def list_vouches(conn: sqlite3.Connection, report_id: int) -> list:
+    """Return ``report_id``'s vouches, oldest first (no identities)."""
+    return [
+        {"created_at": row["created_at"]}
+        for row in conn.execute(
+            "SELECT created_at FROM vouches WHERE report_id = ?"
+            " ORDER BY rowid",
+            (report_id,),
+        ).fetchall()
+    ]
+
+
+def add_comment(
+    conn: sqlite3.Connection,
+    *,
+    report_id: int,
+    account_id: int,
+    body: str,
+) -> int:
+    """Insert one plain-text comment; returns the new comment id."""
+    cur = conn.execute(
+        "INSERT INTO comments (report_id, account_id, body, created_at)"
+        " VALUES (?, ?, ?, ?)",
+        (report_id, account_id, body, _utcnow()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_comments(conn: sqlite3.Connection, report_id: int) -> list:
+    """Return ``report_id``'s comments, newest last (no emails)."""
+    return [
+        {
+            "id": row["id"],
+            "body": row["body"],
+            "created_at": row["created_at"],
+        }
+        for row in conn.execute(
+            "SELECT id, body, created_at FROM comments"
+            " WHERE report_id = ? ORDER BY id",
+            (report_id,),
         ).fetchall()
     ]
 

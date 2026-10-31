@@ -543,6 +543,21 @@ def _remember_claim(conn, report_id: int, claim_text) -> None:
     conn.commit()
 
 
+def update_claim_text(conn, report_id: int, claim_text) -> None:
+    """Replace the stored claim for ``report_id`` (owner edit path).
+
+    The row always exists for accepted uploads (``_remember_claim``
+    runs on every finished upload), so this is a plain UPDATE.
+    ``None`` clears the description back to empty.
+    """
+    _ensure_claims_table(conn)
+    conn.execute(
+        "UPDATE report_claims SET claim_text = ? WHERE report_id = ?",
+        (claim_text, report_id),
+    )
+    conn.commit()
+
+
 def _claim_text(conn, report_id: int):
     """Return the stored claim for ``report_id``, or None."""
     _ensure_claims_table(conn)

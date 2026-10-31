@@ -1,15 +1,102 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Report {{ report.report_id }}</h1>
+<style>
+.detail-hero {
+  position: relative;
+}
+.detail-hero-img {
+  width: 100%;
+  height: 240px;
+  object-fit: cover;
+  border-radius: var(--radius-card);
+  display: block;
+}
+.detail-back {
+  position: absolute;
+  top: var(--safe-area-x);
+  left: var(--safe-area-x);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  background: var(--color-card);
+  color: var(--color-text);
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: var(--shadow-card);
+}
+.detail-card {
+  margin-top: -24px;
+  position: relative;
+}
+.detail-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+.detail-pill {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-secondary);
+  color: var(--color-card);
+  font-size: 12px;
+  font-weight: 700;
+}
+.detail-mini {
+  height: 120px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-border);
+  text-align: center;
+}
+.detail-mini-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  margin: 32px auto 8px auto;
+}
+.detail-action-row {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 0;
+  background: var(--color-bg);
+}
+.detail-action-row form {
+  margin: 0;
+}
+</style>
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
 {% if report.needs_review %}
 <p class="banner">This report needs human review.</p>
 {% endif %}
 {% if correction %}
 <p class="banner">Corrected by reviewer: incident {{ correction.incident_top }}, severity {{ correction.severity }}.</p>
 {% endif %}
-<p class="notice">Demo build — results need human review and are not evidence of authenticity.</p>
-<p class="notice">Visible to logged-in demo users. Your email and exact location are never shared.</p>
-<img class="report-photo" src="{{ report.photo_url }}" alt="Uploaded photo for report {{ report.report_id }}">
+<div class="detail-hero">
+<img class="detail-hero-img" src="{{ report.photo_url }}" alt="Uploaded photo for report {{ report.report_id }}">
+<a class="detail-back" href="/reports" aria-label="Back to your reports">&#8592;</a>
+</div>
+<div class="card detail-card">
+<h1 class="detail-title">{{ title }}</h1>
+<p><span class="detail-pill">{{ report.verdict }}</span></p>
+<div id="mini_map" class="detail-mini" hidden></div>
+<div id="mini_fallback" class="detail-mini">
+<div class="detail-mini-dot" role="presentation"></div>
+<p>Approximate location preview.</p>
+</div>
+{% if report.claim_text %}
+<p>{{ report.claim_text }}</p>
+{% endif %}
 <dl>
 <dt>Incident type</dt>
 <dd>{{ top_incident }} (probability {{ top_incident_prob }})</dd>
@@ -28,6 +115,8 @@
 <dt>Submitted</dt>
 <dd>{{ report.created_at }}</dd>
 </dl>
+<p class="notice">Demo build — results need human review and are not evidence of authenticity.</p>
+<p class="notice">Visible to logged-in demo users. Your email and exact location are never shared.</p>
 <h2>Incident probabilities</h2>
 <ul>
 {% for name, prob in report.incident_probs.items() %}
@@ -46,5 +135,146 @@
 <li>{{ reason }}</li>
 {% endfor %}
 </ul>
+</div>
+<h2>Vouches ({{ vouch_count|default(0) }})</h2>
+{% set vouch_items = vouches|default([]) %}
+{% if vouch_items %}
+<ul id="vouch_list">
+{% for entry in vouch_items %}
+<li class="card">Vouch · {{ entry.created_at }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No vouches yet.</p>
+{% endif %}
+<h2>Comments</h2>
+{% set comment_items = comments|default([]) %}
+{% if comment_items %}
+<ul id="comment_list">
+{% for entry in comment_items %}
+<li class="card"><p>{{ entry.body }}</p><p>{{ entry.created_at }}</p></li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No comments yet.</p>
+{% endif %}
+<form id="comment_form" method="post" action="/comments">
+<input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}">
+<input type="hidden" name="report_id" value="{{ report.report_id }}">
+<label>New comment<input type="text" name="body" maxlength="500" value=""></label>
+<button type="submit">Post comment</button>
+</form>
+<div id="action_row" class="detail-action-row">
+{% if vouched|default(false) %}
+<form method="post" action="/vouches/{{ report.report_id }}/unvouch">
+<input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}">
+<button type="submit" class="btn btn-secondary">Vouched ✓</button>
+</form>
+{% else %}
+<form method="post" action="/vouches">
+<input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}">
+<input type="hidden" name="report_id" value="{{ report.report_id }}">
+<button type="submit" class="btn btn-primary">Vouch</button>
+</form>
+{% endif %}
+{% if is_saved|default(false) %}
+<form method="post" action="/saved/{{ report.report_id }}/unsave">
+<input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}">
+<button type="submit" class="btn btn-secondary">Unsave</button>
+</form>
+{% else %}
+<form method="post" action="/saved">
+<input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}">
+<input type="hidden" name="report_id" value="{{ report.report_id }}">
+<button type="submit" class="btn btn-secondary">Save</button>
+</form>
+{% endif %}
+<a id="share_link" class="btn btn-secondary" href="/shared/{{ report.report_id }}">/shared/{{ report.report_id }}</a>
+</div>
+{% if is_owner|default(false) %}
+<h2>Owner controls</h2>
+<form id="edit_form" method="post" action="/reports/{{ report.report_id }}/edit">
+<input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}">
+<label>Description<input type="text" name="claim_text" value="{{ report.claim_text or '' }}" maxlength="2000"></label>
+<button type="submit">Save changes</button>
+</form>
+<form id="delete_form" method="post" action="/reports/{{ report.report_id }}/delete">
+<input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}">
+<label><input type="checkbox" name="confirm" value="yes"> Yes, delete this report</label>
+<button type="submit">Delete report</button>
+</form>
+{% endif %}
 <p><a href="/reports">Back to your reports</a></p>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script>
+(function () {
+  var INCIDENTS_URL = "/api/incidents";
+  var REPORT_ID = {{ report.report_id }};
+  var mapEl = document.getElementById("mini_map");
+  var fallbackEl = document.getElementById("mini_fallback");
+  function showFallback() {
+    if (mapEl !== null) {
+      mapEl.setAttribute("hidden", "");
+    }
+    if (fallbackEl !== null) {
+      fallbackEl.removeAttribute("hidden");
+    }
+  }
+  function hideFallback() {
+    if (fallbackEl !== null) {
+      fallbackEl.setAttribute("hidden", "");
+    }
+  }
+  var shareLink = document.getElementById("share_link");
+  if (shareLink !== null && navigator.share) {
+    shareLink.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      navigator.share({ title: document.title, url: shareLink.href });
+    });
+  }
+  if (typeof maplibregl === "undefined" || mapEl === null) {
+    showFallback();
+    return;
+  }
+  mapEl.removeAttribute("hidden");
+  fetch(INCIDENTS_URL, { credentials: "same-origin" })
+    .then(function (resp) {
+      if (!resp.ok) {
+        showFallback();
+        return null;
+      }
+      return resp.json();
+    })
+    .then(function (collection) {
+      if (collection === null) {
+        return;
+      }
+      var features = collection.features || [];
+      var point = null;
+      for (var i = 0; i < features.length; i++) {
+        var props = features[i].properties || {};
+        if (props.report_id === REPORT_ID) {
+          point = features[i].geometry.coordinates;
+          break;
+        }
+      }
+      if (point === null) {
+        showFallback();
+        return;
+      }
+      hideFallback();
+      var mini = new maplibregl.Map({
+        container: "mini_map",
+        style: "https://tiles.openfreemap.org/styles/liberty",
+        center: point,
+        zoom: 13,
+        interactive: false
+      });
+      new maplibregl.Marker().setLngLat(point).addTo(mini);
+      mini.on("error", showFallback);
+    })
+    .catch(showFallback);
+})();
+</script>
 {% endblock %}

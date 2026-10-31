@@ -143,6 +143,33 @@ claims. (5) entry complete.
 Commit: 6.3 recorded below.
 
 # Spec status: 3/10 ACCEPTED (6.1, 6.6, 6.3); open: 6.4, 6.5, 6.7, 6.8, 6.9, 6.10, 6.2
-- Next: 6.4 report detail (vouch/comment/save/share/edit/delete backend + restyle).
+- Roster: 6.4 detail dispatched 2026-10-31T03:15:22-04:00
+  (native, inherit).
+
+### Task 6.4 implement, attempt 1
+- Objective: 6.4 Report detail page (backend + restyle)
+- Touched: db.py (vouches + comments tables, helpers); api.py (update_claim_text helper only); pages.py (detail context, vouch/unvouch, comments post/list, owner edit-claim, owner delete, dual form/JSON); shared.html, report.html (rewritten restyle)
+- Created: tests/test_detail.py (11 tests)
+- Tests: python -m pytest lite/tests -q -- 205 passed (194 prior + 11 new), confirmed by orchestrator in-session run (escalated path for sockets)
+- Test integrity: no locked-path edits; JSON retrieval shapes untouched; owner 403 suite green
+- Dependencies: none added
+- Resources: ~50 min of 90 budget; FanStub seam only
+- Mocks/blocked: none; ONE require_escalated approval for sockets
+- Decisions: vouch toggle idempotent (one per account); comments plain-text escaped, capped; edit = claim text only (title is 6.5); delete reuses confirm-once pattern; Share = navigator.share in the one inline script + URL-text fallback; mini-map at jittered display point
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (6.4): ACCEPTED (native, inherit).
+Gates: (1) diff clean - db.py + api.py + pages.py + both
+templates + new test file + orchestrator log. (2) 205 passed run
+in-session. (3) 11 new tests (both pages, 403, jittered
+mini-map, vouch toggle/counts, comment escape/caps, Save sync,
+owner-only edit/delete enforced, Share present). (4) honesty:
+template scan clean (display_* are jittered points; email line
+is the required data-use notice). (5) entry complete.
+Commit: 6.4 recorded below.
+
+# Spec status: 4/10 ACCEPTED (6.1, 6.6, 6.3, 6.4); open: 6.5, 6.7, 6.8, 6.9, 6.10, 6.2
+- Next: 6.5 upload restyle + title/category (also switches map sheet to title).
 
 <!-- END-OF-LOG -->
