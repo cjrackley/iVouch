@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.feed-photo {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: var(--radius-card);
+  display: block;
+}
+.feed-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.feed-avatar-dot {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.feed-card-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.feed-meta {
+  color: var(--color-text-secondary);
+}
+</style>
+<h1>Feed</h1>
+<nav aria-label="Feed view">
+{% if nearby %}
+<a class="btn btn-secondary" href="/feed">For You</a>
+<a class="btn btn-primary" href="/feed?view=nearby" aria-current="page">Nearby</a>
+{% else %}
+<a class="btn btn-primary" href="/feed" aria-current="page">For You</a>
+<a class="btn btn-secondary" href="/feed?view=nearby">Nearby</a>
+{% endif %}
+</nav>
+{% if items %}
+<ul class="feed-list">
+{% for item in items %}
+<li class="card">
+<div class="feed-avatar-row">
+<span class="feed-avatar-dot" role="presentation">{{ item.owner_label[:1] }}</span>
+<span>{{ item.owner_label }}</span>
+</div>
+<a class="feed-card-link" href="/shared/{{ item.report_id }}">
+<img class="feed-photo" src="{{ item.photo_url }}" alt="Photo for report {{ item.report_id }}">
+<span>{{ item.title }}</span>
+<span class="feed-meta">{{ item.vouch_count }} vouches</span>
+{% if item.distance %}
+<span class="feed-meta">{{ item.distance }}</span>
+{% endif %}
+</a>
+{% if item.is_saved %}
+<form method="post" action="/saved/{{ item.report_id }}/unsave">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<button type="submit" class="btn btn-secondary">Saved</button>
+</form>
+{% else %}
+<form method="post" action="/saved">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="report_id" value="{{ item.report_id }}">
+<button type="submit" class="btn btn-secondary">Save</button>
+</form>
+{% endif %}
+</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No vouches to show yet</p>
+<a class="btn btn-primary" href="/map">Explore Map</a>
+{% endif %}
+{% endblock %}

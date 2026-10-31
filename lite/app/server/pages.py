@@ -16,6 +16,7 @@ objective 3.2: ``POST /upload`` (browser upload flow),
 ``GET /map`` (community map, HTML for browsers);
 objective 6.6: ``GET /saved`` (saved places, HTML for browsers),
 ``POST /saved`` (save toggle-add), ``POST /saved/{id}/unsave``;
+objective 6.7: ``GET /feed`` (community feed, HTML for browsers);
 objective 6.4: ``POST /vouches`` (vouch toggle-add),
 ``POST /vouches/{id}/unvouch`` (remove),
 ``POST /comments`` (post one plain-text comment),
@@ -98,6 +99,7 @@ byte-for-byte as before.
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import sqlite3
 import uuid
@@ -1635,6 +1637,154 @@ async def saved_remove(request: Request, report_id: int):
         return _redirect("/login")
     _do_unsave(request, account, report_id)
     return _redirect("/saved?notice=removed")
+
+
+def _haversine_m(lat1: float, lng1: float, lat2: float,
+                 lng2: float) -> float:
+    """Great-circle distance in meters between two points."""
+    radius = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lng = math.radians(lng2 - lng1)
+    inner = (
+        math.sin(delta_phi / 2.0) ** 2
+        + math.cos(phi1) * math.cos(phi2)
+        * math.sin(delta_lng / 2.0) ** 2
+    )
+    return 2.0 * radius * math.asin(math.sqrt(inner))
+
+
+def _format_distance(meters: float) -> str:
+    """Short viewer-facing distance label for one feed card."""
+    if meters < 1000:
+        return f"{int(round(meters))} m away"
+    return f"{meters / 1000.0:.1f} km away"
+
+
+def _feed_items(
+    request: Request,
+    account: dict,
+    viewer_lat=None,
+    viewer_lng=None,
+    nearby: bool = False,
+) -> list:
+    """Accepted reports for the feed, newest first (or nearest first).
+
+    Every display value comes from the shared retrieval payload
+    (photo, claim text, incident outline), so no email, address, or
+    exact coordinates can appear. The owner label is a plain member
+    number (never an email, never a profile link: ``/profile/{id}``
+    does not exist). Distances are computed from the jittered
+    display points when the viewer passed ``lat``/``lng``; otherwise
+    they are omitted. ``nearby`` with a viewer location sorts
+    nearest first; without one it keeps newest-first order.
+    """
+    from lite.app.server import api as api_module
+    from lite.app.server import db as db_module
+
+    with _page_connection(request) as conn:
+        rows = conn.execute(
+            "SELECT r.* FROM reports r"
+            " JOIN check_results c ON c.report_id = r.id"
+            " ORDER BY r.id DESC"
+        ).fetchall()
+        saved_ids = set(
+            db_module.list_saved_report_ids(conn, account["id"])
+        )
+        stored = {}
+        for row in rows:
+            keys = set(row.keys())
+            stored[row["id"]] = {
+                "title": row["title"] if "title" in keys else None,
+                "owner_id": row["account_id"],
+            }
+    items = []
+    for row in rows:
+        report_id = row["id"]
+        try:
+            body = api_module.get_shared_report(
+                report_id, request, account
+            )
+        except HTTPException:
+            continue
+        incident = dict(body.get("incident_probs") or {})
+        top = max(incident, key=incident.get) if incident else None
+        title = api_module.display_title(
+            stored[report_id]["title"],
+            body.get("claim_text"),
+            top,
+            report_id,
+        )
+        with _page_connection(request) as conn:
+            vouch_count = db_module.count_vouches(conn, report_id)
+        distance_m = None
+        distance = None
+        if viewer_lat is not None and viewer_lng is not None:
+            distance_m = _haversine_m(
+                viewer_lat,
+                viewer_lng,
+                body["display_lat"],
+                body["display_lng"],
+            )
+            distance = _format_distance(distance_m)
+        items.append(
+            {
+                "report_id": report_id,
+                "photo_url": f"/shared/photos/{report_id}",
+                "title": title,
+                "vouch_count": vouch_count,
+                "owner_label": (
+                    f"Member {stored[report_id]['owner_id']}"
+                ),
+                "is_saved": report_id in saved_ids,
+                "distance": distance,
+                "distance_m": distance_m,
+            }
+        )
+    if nearby and viewer_lat is not None and viewer_lng is not None:
+        items.sort(key=lambda entry: entry["distance_m"])
+    for entry in items:
+        del entry["distance_m"]
+    return items
+
+
+@pages_router.get("/feed")
+def feed_list(request: Request):
+    """Community feed: accepted reports as cards (login only).
+
+    Anonymous callers are redirected to ``/login``. The segmented
+    For You | Nearby toggle is two plain links (no script, no
+    Following segment: follows were not approved). ``view=nearby``
+    with ``lat``/``lng`` query values sorts nearest first and shows
+    per-card distances; without them distances are omitted.
+    """
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    params = request.query_params
+    nearby = (params.get("view") or "").strip().lower() == "nearby"
+    viewer_lat = _parse_float(params.get("lat"))
+    viewer_lng = _parse_float(params.get("lng"))
+    if viewer_lat is None or viewer_lng is None:
+        viewer_lat = viewer_lng = None
+    token, is_new = _csrf_issue(request)
+    return _render(
+        "feed.html",
+        {
+            "title": "Feed",
+            "csrf_token": token,
+            "nearby": nearby,
+            "items": _feed_items(
+                request,
+                account,
+                viewer_lat=viewer_lat,
+                viewer_lng=viewer_lng,
+                nearby=nearby,
+            ),
+        },
+        csrf_new=token if is_new else None,
+    )
 
 
 def _review_denied() -> Response:

@@ -197,6 +197,38 @@ clean (single inline script, consent intact). (5) entry complete.
 Commit: 6.5 recorded below.
 
 # Spec status: 5/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5); open: 6.7, 6.8, 6.9, 6.10, 6.2
-- Next: 6.7 feed (approved; For You | Nearby only, no follows/profiles).
+- Roster: 6.7 feed dispatched 2026-10-31T03:33:39-04:00
+  (native, inherit). Brief-error note: first dispatch listed
+  base.html in both allowed and locked paths (orchestrator error,
+  caught before work started); cancelled cleanly with zero stray
+  changes and re-dispatched with base.html correctly in
+  unlocked_paths. No attempt consumed.
+- Cancelled dispatch produced no entry (cancellation receipt only).
+
+### Task 6.7 implement, attempt 1 (clean re-dispatch)
+- Objective: 6.7 Feed (For You | Nearby only)
+- Touched: pages.py (GET /feed + helpers); base.html (unlocked: Feed tab only); test_design_system.py (unlocked: tab-set extension only)
+- Created: templates/feed.html (zero scripts); tests/test_feed.py (11 tests)
+- Tests: python -m pytest lite/tests -q -- 222 passed (211 prior + 11 new), confirmed by orchestrator in-session run (escalated path for sockets)
+- Test integrity: unlocked diffs verified minimal (9-line test change, 2-line shell change); all other suites green unchanged; no api.py/db.py changes needed (all state reused)
+- Dependencies: none added
+- Resources: ~4 min of 90 budget; FanStub seam only
+- Mocks/blocked: none; ONE require_escalated approval for sockets
+- Decisions: For You = newest-first accepted; Nearby = ?view=nearby nearest-first, distance labels only with ?lat/?lng (links never echo viewer coords); owner label "Member {id}" plain text, no link; pending reports never listed; NO Following/follows/profile/search/bell
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (6.7): ACCEPTED (native, inherit).
+Gates: (1) diff clean - pages.py + unlocked base.html/test
+extension + feed.html + test_feed.py + orchestrator log.
+(2) 222 passed run in-session. (3) 11 new tests (gate,
+segments, card links, per-card Save sync, shared-fields-only,
+no dead profile link, empty state, tab present). (4) feed scan
+clean (no scripts, no profile/follow/search traces). (5) entry
+complete.
+Commit: 6.7 recorded below.
+
+# Spec status: 6/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7); open: 6.8, 6.9, 6.10, 6.2
+- Next: 6.8 account restyle (own profile only; no edit/follow/activity).
 
 <!-- END-OF-LOG -->
