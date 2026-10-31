@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Saved Places</h1>
+<p>{{ items|length }} saved</p>
+<nav aria-label="Saved view">
+<a class="btn btn-primary" href="/saved" aria-current="page">List</a>
+<a class="btn btn-secondary" href="/map">Map</a>
+</nav>
+{% if removed %}
+<p class="notice">Removed from your saved places.</p>
+{% endif %}
+{% if items %}
+<ul class="saved-list">
+{% for item in items %}
+<li class="card">
+<a class="saved-card-link" href="/shared/{{ item.report_id }}">
+<img src="{{ item.photo_url }}" alt="Saved photo for report {{ item.report_id }}" style="width: 80px; height: 80px; border-radius: var(--radius-button);">
+<span>{{ item.title }}</span>
+</a>
+<form method="post" action="/saved/{{ item.report_id }}/unsave">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<button type="submit">Unsave</button>
+</form>
+</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No saved vouches yet</p>
+<a class="btn btn-primary" href="/map">Explore Map</a>
+{% endif %}
+{% endblock %}

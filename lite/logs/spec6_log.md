@@ -89,6 +89,33 @@ complete.
 Commit: 6.1 recorded below.
 
 # Spec status: 1/10 ACCEPTED (6.1); open: 6.6, 6.3, 6.4, 6.5, 6.7, 6.8, 6.9, 6.10, 6.2
-- Next: 6.6 Saved places (backend + page) - Save dependency first.
+- Roster: 6.6 Saved places dispatched 2026-10-30T22:58:58-04:00
+  (native, inherit).
+
+### Task lite-spec-6 6.6 implement, attempt 1
+- Objective: 6.6 Saved places (backend + page), shipping before 6.3/6.4
+- Touched: db.py (saves table + 4 helpers); pages.py (GET /saved, POST /saved, POST /saved/{id}/unsave + helpers); base.html (Saved tab); test_design_system.py (unlocked-only tab-set extension)
+- Created: templates/saved.html; tests/test_saved.py (9 tests)
+- Tests: python -m pytest lite/tests -q -- 188 passed (179 prior + 9 new), confirmed by orchestrator in-session run (escalated path for sockets)
+- Test integrity: unlocked edit minimal (Saved in, Feed still asserted absent); all other assertions kept
+- Dependencies: none added (stdlib sqlite3, existing FastAPI/Jinja2, style.css variables)
+- Resources: within 90-min budget; FanStub CLIP seam reused; no network
+- Checkpoint: lite/work/checkpoints/spec-6-6.6.md
+- Mocks/blocked: none; ONE require_escalated approval for sockets (WinError 10013, confirmed environmental)
+- Decisions: saves table via spec-2 recreate path (IF NOT EXISTS, no migration, SCHEMA_VERSION untouched); save needs accepted report (404 otherwise); unsave no-op success; card title = claim text w/ incident-type fallback; List|Map toggle links; server-rendered notice instead of toast (no new script tag); no api.py change needed
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (6.6): ACCEPTED (native, inherit).
+Gates: (1) diff clean - db.py + pages.py + base.html + unlocked
+test extension + saved.html + test_saved.py + orchestrator log.
+(2) 188 passed run in-session. (3) 9 new tests (save/unsave,
+sync, empty state, login gate, isolation, card links,
+shared-fields-only); unlocked diff verified minimal. (4) honesty:
+no accuracy claims; no browser claims. (5) entry complete.
+Commit: 6.6 recorded below.
+
+# Spec status: 2/10 ACCEPTED (6.1, 6.6); open: 6.3, 6.4, 6.5, 6.7, 6.8, 6.9, 6.10, 6.2
+- Next: 6.3 map page restyle + bottom sheet (Save backend now ready).
 
 <!-- END-OF-LOG -->

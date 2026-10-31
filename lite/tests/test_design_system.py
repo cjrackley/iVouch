@@ -6,8 +6,8 @@ the shell, no app, no network): every spec colour, radius, and shadow
 is a CSS variable; templates use the variables, not literals; font
 smoothing applies globally; no page uses Times New Roman or ``#000``
 text; every button is 44px+ tall and defines every required state;
-the layout shell provides the mobile tab bar (Map, Create, Profile
-only), the desktop sidebar, the top bar with gear link, and 16px
+the layout shell provides the mobile tab bar (Map, Create, Saved,
+Profile), the desktop sidebar, the top bar with gear link, and 16px
 SafeArea padding as pure HTML+CSS.
 """
 
@@ -202,15 +202,14 @@ def test_layout_shell_structure():
     assert 'class="tab-bar"' in source
     assert 'class="sidebar"' in source
     assert 'href="/account"' in source, "header gear to /account missing"
-    for target in ("/map", "/upload", "/account"):
+    for target in ("/map", "/upload", "/saved", "/account"):
         assert f'href="{target}"' in source, (
             f"tab bar missing link to {target}"
         )
-    # Feed and Saved tabs land with 6.7/6.6, not yet.
-    for target in ("/feed", "/saved"):
-        assert f'href="{target}"' not in source, (
-            f"tab bar points at unbuilt route {target}"
-        )
+    # The Feed tab lands with 6.7, not yet.
+    assert 'href="/feed"' not in source, (
+        "tab bar points at unbuilt route /feed"
+    )
     css = _css()
     assert re.search(
         r"\.top-bar\s*\{[^}]*height:\s*var\(--top-bar-h\)", css, re.DOTALL
@@ -244,8 +243,9 @@ def test_shell_is_pure_html_css_without_scripts():
     )
     body = _render_base()
     assert "<script" not in body.lower()
-    for target in ("/map", "/upload", "/account"):
+    for target in ("/map", "/upload", "/saved", "/account"):
         assert f'href="{target}"' in body
+    assert 'href="/feed"' not in body
     # Desktop collapse rule: tab bar becomes a sidebar.
     assert "@media" in _css()
     assert ".sidebar" in _css()

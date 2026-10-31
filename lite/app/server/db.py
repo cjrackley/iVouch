@@ -5,7 +5,8 @@ framework: Lite is a fresh-install demo, so schema changes mean
 recreating the database, never a migration.
 
 Tables: ``accounts``, ``reports``, ``check_results``,
-``review_actions``, ``audit_events``, plus a ``schema_version`` row.
+``review_actions``, ``audit_events``, ``saves``, plus a
+``schema_version`` row.
 No column anywhere stores a date of birth -- only
 ``accounts.age_confirmed_at`` is kept.
 
@@ -134,6 +135,13 @@ CREATE TABLE IF NOT EXISTS audit_events (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS saves (
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (account_id, report_id)
+);
+
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL
@@ -221,6 +229,78 @@ def find_report(
         "SELECT * FROM reports WHERE account_id = ? AND client_report_id = ?",
         (account_id, client_report_id),
     ).fetchone()
+
+
+def save_report(
+    conn: sqlite3.Connection, *, account_id: int, report_id: int
+) -> bool:
+    """Save ``report_id`` for ``account_id``; idempotent.
+
+    Returns True when the save was added, False when the pair was
+    already saved. The ``PRIMARY KEY (account_id, report_id)`` keeps
+    the pair unique even under a raced repeat insert.
+    """
+    existing = conn.execute(
+        "SELECT 1 FROM saves WHERE account_id = ? AND report_id = ?",
+        (account_id, report_id),
+    ).fetchone()
+    if existing is not None:
+        return False
+    try:
+        conn.execute(
+            "INSERT INTO saves (account_id, report_id, created_at)"
+            " VALUES (?, ?, ?)",
+            (account_id, report_id, _utcnow()),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Lost a race with a concurrent save of the same pair.
+        conn.rollback()
+        return False
+    return True
+
+
+def unsave_report(
+    conn: sqlite3.Connection, *, account_id: int, report_id: int
+) -> bool:
+    """Remove ``report_id`` from ``account_id``'s saves.
+
+    A missing save is a no-op success: returns True when a row was
+    removed, False when there was nothing to remove.
+    """
+    cur = conn.execute(
+        "DELETE FROM saves WHERE account_id = ? AND report_id = ?",
+        (account_id, report_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def is_saved(
+    conn: sqlite3.Connection, account_id: int, report_id: int
+) -> bool:
+    """Return True when ``account_id`` saved ``report_id``."""
+    return (
+        conn.execute(
+            "SELECT 1 FROM saves WHERE account_id = ? AND report_id = ?",
+            (account_id, report_id),
+        ).fetchone()
+        is not None
+    )
+
+
+def list_saved_report_ids(
+    conn: sqlite3.Connection, account_id: int
+) -> list[int]:
+    """Return ``account_id``'s saved report ids, oldest save first."""
+    return [
+        row["report_id"]
+        for row in conn.execute(
+            "SELECT report_id FROM saves WHERE account_id = ?"
+            " ORDER BY rowid",
+            (account_id,),
+        ).fetchall()
+    ]
 
 
 def create_report(

@@ -14,6 +14,8 @@ objective 3.2: ``POST /upload`` (browser upload flow),
 ``GET /shared/{id}`` (community page, HTML for browsers);
 ``GET /shared/photos/{id}`` (photo bytes for cookie sessions);
 ``GET /map`` (community map, HTML for browsers);
+objective 6.6: ``GET /saved`` (saved places, HTML for browsers),
+``POST /saved`` (save toggle-add), ``POST /saved/{id}/unsave``;
 ``GET /api/photos/{id}`` (cookie-aware bridge, delegates without one);
 ``GET /static/style.css``.
 
@@ -856,6 +858,186 @@ def map_page(request: Request):
             "reports": items,
         },
     )
+
+
+def _saved_items(request: Request, account: dict) -> list:
+    """Accepted saved reports for the session account, newest first.
+
+    Every display value comes from the shared retrieval payload
+    (photo, claim text, incident outline), so no email, address, or
+    exact coordinates can appear. Saves whose report is gone or was
+    never accepted are skipped.
+    """
+    from lite.app.server import api as api_module
+    from lite.app.server import db as db_module
+
+    with _page_connection(request) as conn:
+        ids = db_module.list_saved_report_ids(conn, account["id"])
+    items = []
+    for report_id in reversed(ids):
+        try:
+            body = api_module.get_shared_report(
+                report_id, request, account
+            )
+        except HTTPException:
+            continue
+        incident = dict(body.get("incident_probs") or {})
+        top = max(incident, key=incident.get) if incident else None
+        title = body.get("claim_text") or top or f"Report {report_id}"
+        items.append(
+            {
+                "report_id": body["report_id"],
+                "photo_url": f"/shared/photos/{body['report_id']}",
+                "title": title,
+                "created_at": body.get("created_at"),
+            }
+        )
+    return items
+
+
+def _do_save(request: Request, account: dict, report_id) -> int:
+    """Save one accepted report for ``account`` (idempotent add).
+
+    Raises 404 unless the report exists and is accepted, so rejected,
+    deleted, or missing reports can never be saved.
+    """
+    from lite.app.server import api as api_module
+    from lite.app.server import db as db_module
+
+    if isinstance(report_id, bool) or not isinstance(report_id, int):
+        raise HTTPException(
+            status_code=404, detail="Not found."
+        )
+    try:
+        api_module.get_shared_report(report_id, request, account)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=404, detail="Not found."
+            ) from None
+        raise
+    with _page_connection(request) as conn:
+        db_module.save_report(
+            conn, account_id=account["id"], report_id=report_id
+        )
+    return report_id
+
+
+def _do_unsave(request: Request, account: dict, report_id) -> int:
+    """Remove one save; a missing save is a no-op success."""
+    from lite.app.server import db as db_module
+
+    if isinstance(report_id, bool) or not isinstance(report_id, int):
+        return report_id if isinstance(report_id, int) else 0
+    with _page_connection(request) as conn:
+        db_module.unsave_report(
+            conn, account_id=account["id"], report_id=report_id
+        )
+    return report_id
+
+
+def _saved_report_id(value) -> int | None:
+    """Parse a posted report id, or None when missing/not numeric."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@pages_router.get("/saved")
+def saved_list(request: Request):
+    """Saved places: the caller's saved accepted reports (login only).
+
+    Anonymous callers are redirected to ``/login``. The segmented
+    List | Map toggle is two plain links (no script): List stays
+    here, Map goes to the community map.
+    """
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    token, is_new = _csrf_issue(request)
+    notice = request.query_params.get("notice")
+    return _render(
+        "saved.html",
+        {
+            "title": "Saved Places",
+            "csrf_token": token,
+            "items": _saved_items(request, account),
+            "removed": notice == "removed",
+        },
+        csrf_new=token if is_new else None,
+    )
+
+
+@pages_router.post("/saved")
+async def saved_add(request: Request):
+    """Save one accepted report (idempotent; form or JSON).
+
+    Browser forms (cookie session plus CSRF) redirect to ``/saved``;
+    JSON clients (Bearer [REDACTED]) get ``{"ok": true}``. Saving a
+    missing or rejected report answers 404 in both modes.
+    """
+    from lite.app.server import api as api_module
+
+    if "application/json" in request.headers.get("content-type", ""):
+        account = api_module.get_current_account(request)
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="Invalid save body."
+            ) from None
+        report_id = (
+            payload.get("report_id")
+            if isinstance(payload, dict)
+            else None
+        )
+        saved_id = _do_save(request, account, report_id)
+        return {"ok": True, "saved": True, "report_id": saved_id}
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    report_id = _saved_report_id(form.get("report_id"))
+    if report_id is None:
+        return _not_found(
+            back="/saved", back_label="Back to saved places"
+        )
+    try:
+        _do_save(request, account, report_id)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _not_found(
+                back="/saved", back_label="Back to saved places"
+            )
+        raise
+    return _redirect("/saved")
+
+
+@pages_router.post("/saved/{report_id}/unsave")
+async def saved_remove(request: Request, report_id: int):
+    """Remove one save; a missing save is a no-op success.
+
+    Browser forms (cookie session plus CSRF) redirect to ``/saved``;
+    JSON clients (Bearer [REDACTED]) get ``{"ok": true}``. Never 404s
+    for a missing save.
+    """
+    from lite.app.server import api as api_module
+
+    if "application/json" in request.headers.get("content-type", ""):
+        account = api_module.get_current_account(request)
+        saved_id = _do_unsave(request, account, report_id)
+        return {"ok": True, "saved": False, "report_id": saved_id}
+    form = await request.form()
+    if not _csrf_valid(request, form.get(CSRF_FIELD)):
+        return _csrf_denied()
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    _do_unsave(request, account, report_id)
+    return _redirect("/saved?notice=removed")
 
 
 def _review_denied() -> Response:
