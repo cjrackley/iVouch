@@ -137,7 +137,7 @@ the 5.3/5.4 gate. (3) integrity: no locked paths, no tests touched.
 (4) honesty: ASCII-only; no accuracy claims - states human visual
 judgement only, out-of-scope automated check, and the data-use rule.
 (5) entry complete.
-Commit: de2cdba (lite/DEMO.md + lite/logs/spec5_log.md; entry file
+Commit: 6f78e7b (lite/DEMO.md + lite/logs/spec5_log.md; entry file
 gitignored by lite/work rule).
 
 ### Orchestrator fresh-checkout map run (5.5 verification)
