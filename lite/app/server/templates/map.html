@@ -51,6 +51,12 @@
   border-radius: var(--radius-pill);
   background: var(--color-border);
 }
+#sheet_title {
+  font-size: 20px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 #sheet_photo {
   width: 100%;
   height: auto;
@@ -96,6 +102,7 @@
 <div id="sheet_grab" role="presentation"></div>
 <button type="button" id="sheet_close">Close</button>
 <img id="sheet_photo" src="" alt="">
+<h2 id="sheet_title"></h2>
 <p id="sheet_incident"></p>
 <div id="sheet_meta"></div>
 <p id="sheet_pager" hidden></p>
@@ -123,7 +130,7 @@
 <p>The map could not be loaded. Reports list:</p>
 <ul>
 {% for item in reports %}
-<li><a href="/shared/{{ item.report_id }}">Report {{ item.report_id }}</a>
+<li><a href="/shared/{{ item.report_id }}">{{ item.display_title }}</a>
 {% if item.report_id in saved_ids %}
 <form method="post" action="/saved/{{ item.report_id }}/unsave">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -168,6 +175,7 @@
   var sheetEl = document.getElementById("map_sheet");
   var sheetClose = document.getElementById("sheet_close");
   var sheetPhoto = document.getElementById("sheet_photo");
+  var sheetTitle = document.getElementById("sheet_title");
   var sheetIncident = document.getElementById("sheet_incident");
   var sheetMeta = document.getElementById("sheet_meta");
   var sheetPager = document.getElementById("sheet_pager");
@@ -257,6 +265,7 @@
     }
     sheetPhoto.setAttribute("src", photoUrl);
     sheetPhoto.setAttribute("alt", "Photo for report " + reportId);
+    sheetTitle.textContent = props.title || props.claim_text || top[0];
     sheetIncident.textContent = "Incident type: " + top[0] + " (" + top[1] + ")";
     sheetMeta.innerHTML = "<p>Severity: " + escapeHtml(props.top_severity) + "</p>"
       + "<p>Assessment: " + escapeHtml(props.verdict) + "</p>"

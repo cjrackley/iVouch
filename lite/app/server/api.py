@@ -61,6 +61,11 @@ GENERIC_REGISTER_MESSAGE = (
 )
 GENERIC_LOGIN_DETAIL = "Invalid email or password."
 
+# User-supplied report heading (objective 6.5): plain text, capped at
+# 80 characters. Stored as user input only; it never replaces the
+# CLIP incident type or any check output.
+TITLE_MAX = 80
+
 
 def _client_ip(request: Request) -> str:
     """Best-effort client IP for the login rate-limit bucket."""
@@ -421,6 +426,8 @@ def analyze(
     location_lng: float | None = Form(None),
     location_consented: bool | None = Form(None),
     location_source: str | None = Form(None),
+    title: str | None = Form(None),
+    category: str | None = Form(None),
 ):
     """Accept one photo upload and run the synchronous check pipeline.
 
@@ -462,6 +469,26 @@ def analyze(
         raise HTTPException(
             status_code=422,
             detail="client_report_id is required.",
+        )
+    title_value = (
+        title.strip()
+        if isinstance(title, str) and title.strip()
+        else None
+    )
+    if title_value is not None and len(title_value) > TITLE_MAX:
+        raise HTTPException(
+            status_code=422,
+            detail="title must be %d characters or fewer." % TITLE_MAX,
+        )
+    category_value = (
+        category.strip()
+        if isinstance(category, str) and category.strip()
+        else None
+    )
+    if category_value is not None and category_value not in load_config().incident_prompts:
+        raise HTTPException(
+            status_code=422,
+            detail="category must be one of the listed choices.",
         )
     # (2) Verified-email gate.
     if not account.get("email_verified"):
@@ -513,6 +540,9 @@ def analyze(
         # table owned here so the committed schema stays untouched.
         with _connection(request) as conn:
             _remember_claim(conn, body["report_id"], claim_value)
+            _remember_title_category(
+                conn, body["report_id"], title_value, category_value
+            )
     return body
 
 
@@ -530,6 +560,77 @@ def _ensure_claims_table(conn) -> None:
     """Create the auxiliary claim-text table when missing."""
     conn.execute(_CLAIMS_TABLE_SQL)
     conn.commit()
+
+
+def _report_meta_columns(conn) -> set:
+    """Column names of the reports table (old-DB tolerant)."""
+    return {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(reports)").fetchall()
+    }
+
+
+def _remember_title_category(conn, report_id: int, title, category):
+    """Store the user title/category for ``report_id``.
+
+    Blanks-only: fills columns that are still NULL and never
+    overwrites a stored value, so an idempotent replay keeps the
+    first upload inputs. Databases created before the 6.5 columns
+    exist are left untouched (titles then fall back).
+    Returns ``(stored_title, stored_category)``.
+    """
+    cols = _report_meta_columns(conn)
+    if "title" not in cols or "category" not in cols:
+        return None, None
+    conn.execute(
+        "UPDATE reports SET title = COALESCE(title, ?),"
+        " category = COALESCE(category, ?) WHERE id = ?",
+        (title, category, report_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT title, category FROM reports WHERE id = ?",
+        (report_id,),
+    ).fetchone()
+    if row is None:
+        return None, None
+    return row["title"], row["category"]
+
+
+def display_title(stored_title, claim_text, incident_top, report_id,
+                limit: int = TITLE_MAX) -> str:
+    """Display heading: user title, else claim text (truncated).
+
+    Falls back to the claim text truncated to ``limit``
+    characters, then the incident type, then ``Report {id}`` -- so
+    reports stored before titles existed still render.
+    """
+    if isinstance(stored_title, str) and stored_title.strip():
+        return stored_title.strip()
+    text = (
+        claim_text.strip()
+        if isinstance(claim_text, str) and claim_text.strip()
+        else ""
+    )
+    if text:
+        if len(text) > limit:
+            return text[: max(limit - 3, 0)] + "..."
+        return text
+    if incident_top:
+        return incident_top
+    return "Report %d" % report_id
+
+
+def category_choices() -> list:
+    """Fixed category set for the upload pill selector.
+
+    Exactly the CLIP incident-type labels from config (no invented
+    categories); each entry carries a plain display label.
+    """
+    return [
+        {"value": value, "label": value.replace("_", " ")}
+        for value in load_config().incident_prompts
+    ]
 
 
 def _remember_claim(conn, report_id: int, claim_text) -> None:
@@ -735,6 +836,13 @@ def list_incidents(
             payload = _report_payload(
                 report, check, _claim_text(conn, report["id"]),
                 owner=False,
+            )
+            meta_keys = set(report.keys())
+            payload["title"] = (
+                report["title"] if "title" in meta_keys else None
+            )
+            payload["category"] = (
+                report["category"] if "category" in meta_keys else None
             )
             features.append(
                 {

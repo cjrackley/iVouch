@@ -99,6 +99,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import date
@@ -529,6 +530,8 @@ def _upload_page(request: Request, account, error=None, status: int = 200):
     """Render ``GET /upload`` for ``account`` (None means anonymous)."""
     if account is None:
         return _redirect("/login")
+    from lite.app.server import api as api_module
+
     token, is_new = _csrf_issue(request)
     return _render(
         "upload.html",
@@ -538,6 +541,7 @@ def _upload_page(request: Request, account, error=None, status: int = 200):
             "verified": bool(account["email_verified"]),
             "client_report_id": uuid.uuid4().hex,
             "error": error,
+            "categories": api_module.category_choices(),
         },
         status=status,
         csrf_new=token if is_new else None,
@@ -610,6 +614,10 @@ async def upload_submit(request: Request):
     if claim_raw is None:
         claim_raw = form.get("claim")
     claim = claim_raw if isinstance(claim_raw, str) else None
+    title_raw = form.get("title")
+    title = title_raw if isinstance(title_raw, str) else None
+    category_raw = form.get("category")
+    category = category_raw if isinstance(category_raw, str) else None
     source_raw = form.get("location_source")
     source = source_raw if isinstance(source_raw, str) else None
     client_raw = form.get("client_report_id")
@@ -634,6 +642,8 @@ async def upload_submit(request: Request):
             location_consented=form.get("location_consented")
             in ("true", "on", "yes", "1"),
             location_source=source,
+            title=title,
+            category=category,
         )
     except HTTPException as exc:
         if exc.status_code in (413, 415, 422):
@@ -838,22 +848,44 @@ def _detail_context(
 ):
     """Template context for the restyled detail layout (both pages).
 
-    The title is the claim text with the incident type as fallback
-    (the user-editable title field is objective 6.5, not here).
-    Vouch counts are derived, never stored. Returns
+    The title is the user-supplied title with the claim text (then the
+    incident type) as fallback, so reports stored before titles existed
+    still render. The category is display-only user input: it is shown
+    as its own field and never replaces the incident type or any check
+    output. Vouch counts are derived, never stored. Returns
     ``(context, csrf_new)`` for :func:`_render`.
     """
+    from lite.app.server import api as api_module
     from lite.app.server import db as db_module
 
     name, prob = _top_incident(body)
     claim = body.get("claim_text")
-    title = claim or name or f"Report {report_id}"
     token, is_new = _csrf_issue(request)
     with _page_connection(request) as conn:
         owner_row = conn.execute(
             "SELECT account_id FROM reports WHERE id = ?",
             (report_id,),
         ).fetchone()
+        try:
+            meta = conn.execute(
+                "SELECT title, category FROM reports WHERE id = ?",
+                (report_id,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            # Database created before the 6.5 columns existed.
+            meta = None
+        stored_title = meta["title"] if meta is not None else None
+        stored_category = (
+            meta["category"] if meta is not None else None
+        )
+        title = api_module.display_title(
+            stored_title, claim, name, report_id
+        )
+        category_label = (
+            stored_category.replace("_", " ")
+            if stored_category
+            else None
+        )
         is_owner = (
             owner_row is not None
             and owner_row["account_id"] == account["id"]
@@ -865,8 +897,6 @@ def _detail_context(
         saved = db_module.is_saved(conn, account["id"], report_id)
         correction = None
         if owner_view:
-            from lite.app.server import api as api_module
-
             correction = api_module.effective_labels(conn, report_id)[
                 "correction"
             ]
@@ -875,6 +905,8 @@ def _detail_context(
         "report": body,
         "top_incident": name,
         "top_incident_prob": prob,
+        "category": stored_category,
+        "category_label": category_label,
         "correction": correction,
         "csrf_token": token,
         "is_owner": is_owner,
@@ -1376,7 +1408,25 @@ def map_page(request: Request):
         report_id = props.get("report_id") if isinstance(props, dict) else None
         if report_id is None:
             continue
-        items.append({"report_id": report_id})
+        incident = (
+            dict(props.get("incident_probs") or {})
+            if isinstance(props, dict)
+            else {}
+        )
+        top = max(incident, key=incident.get) if incident else None
+        items.append(
+            {
+                "report_id": report_id,
+                "display_title": api_module.display_title(
+                    props.get("title") if isinstance(props, dict) else None,
+                    props.get("claim_text")
+                    if isinstance(props, dict)
+                    else None,
+                    top,
+                    report_id,
+                ),
+            }
+        )
     from lite.app.server import db as db_module
 
     with _page_connection(request) as conn:
@@ -1409,6 +1459,12 @@ def _saved_items(request: Request, account: dict) -> list:
 
     with _page_connection(request) as conn:
         ids = db_module.list_saved_report_ids(conn, account["id"])
+        stored_titles = {}
+        for row in conn.execute("SELECT * FROM reports").fetchall():
+            keys = set(row.keys())
+            stored_titles[row["id"]] = (
+                row["title"] if "title" in keys else None
+            )
     items = []
     for report_id in reversed(ids):
         try:
@@ -1419,7 +1475,12 @@ def _saved_items(request: Request, account: dict) -> list:
             continue
         incident = dict(body.get("incident_probs") or {})
         top = max(incident, key=incident.get) if incident else None
-        title = body.get("claim_text") or top or f"Report {report_id}"
+        title = api_module.display_title(
+            stored_titles.get(report_id),
+            body.get("claim_text"),
+            top,
+            report_id,
+        )
         items.append(
             {
                 "report_id": body["report_id"],

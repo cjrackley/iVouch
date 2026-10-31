@@ -103,6 +103,8 @@ CREATE TABLE IF NOT EXISTS reports (
     location_consented INTEGER NOT NULL CHECK (location_consented = 1),
     location_source TEXT NOT NULL
         CHECK (location_source IN ('browser', 'manual_pin')),
+    title TEXT,
+    category TEXT,
     UNIQUE (account_id, client_report_id)
 );
 

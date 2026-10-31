@@ -170,6 +170,33 @@ is the required data-use notice). (5) entry complete.
 Commit: 6.4 recorded below.
 
 # Spec status: 4/10 ACCEPTED (6.1, 6.6, 6.3, 6.4); open: 6.5, 6.7, 6.8, 6.9, 6.10, 6.2
-- Next: 6.5 upload restyle + title/category (also switches map sheet to title).
+- Roster: 6.5 upload dispatched 2026-10-31T03:22:36-04:00
+  (native, inherit).
+
+### Task 6.5 implement, attempt 1
+- Objective: 6.5 Upload page restyle + title/category
+- Touched: api.py, db.py (title+category columns), pages.py, templates/upload.html, map.html, shared.html, report.html (title propagation)
+- Created: tests/test_upload_restyle.py (6 tests)
+- Tests: python -m pytest lite/tests -q -- 211 passed (205 prior + 6 new), confirmed by orchestrator in-session run (escalated path for sockets)
+- Test integrity: no locked-path edits; first attempt broke 4 frozen exact-keys JSON tests by adding title/category to frozen bodies and correctly rescoped to incidents-properties + DB reads instead of weakening asserts
+- Dependencies: none added
+- Resources: within 90-min budget; FanStub seam only
+- Mocks/blocked: none; ONE require_escalated approval for sockets
+- Decisions: title required in form ([Post] gating + required attr), optional server-side with claim-text fallback (locked suites POST title-less uploads); frozen JSON contracts byte-identical; category display-only, separation test proves CLIP type unaffected; centralized display_title helper with claim/incident fallback (saved cards included)
+- Env note: pre-existing lite/data/ivouch.db (gitignored dev data) predates the new columns - title writes need it recreated (delete file, spec-2 recreate path); reads fall back. Fresh-checkout/demo runs use fresh DBs and are unaffected.
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (6.5): ACCEPTED (native, inherit).
+Gates: (1) diff clean - api.py + db.py + pages.py + 4 templates
++ new test file + orchestrator log. (2) 211 passed run
+in-session. (3) 6 new tests (sheet structure, gating,
+persistence, category separation, consent intact, lat/lng not
+address, title propagation + fallback). (4) honesty: upload scan
+clean (single inline script, consent intact). (5) entry complete.
+Commit: 6.5 recorded below.
+
+# Spec status: 5/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5); open: 6.7, 6.8, 6.9, 6.10, 6.2
+- Next: 6.7 feed (approved; For You | Nearby only, no follows/profiles).
 
 <!-- END-OF-LOG -->

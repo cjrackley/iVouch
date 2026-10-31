@@ -94,6 +94,10 @@
 <dl>
 <dt>Incident type</dt>
 <dd>{{ top_incident }} (probability {{ top_incident_prob }})</dd>
+{% if category %}
+<dt>Category</dt>
+<dd>{{ category_label }}</dd>
+{% endif %}
 <dt>Severity</dt>
 <dd>{{ report.top_severity }}</dd>
 <dt>Assessment</dt>
