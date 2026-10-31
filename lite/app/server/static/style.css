@@ -1,24 +1,314 @@
+/* iVouch Lite global design system (spec 6.1). All theme values live
+   here as CSS variables; templates reference the variables. */
+
+:root {
+  --color-primary: #0F6BFF;
+  --color-secondary: #00C98D;
+  --gradient-primary: linear-gradient(135deg, #0F6BFF 0%, #00C98D 100%);
+  --color-bg: #F5F8FB;
+  --color-card: #FFFFFF;
+  --color-border: #E5E7EB;
+  --color-text: #111827;
+  --color-text-secondary: #6B7280;
+  --color-text-muted: #9CA3AF;
+  --color-input-bg: #F9FAFB;
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --radius-pill: 24px;
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.06);
+  --shadow-fab: 0 8px 24px rgba(15, 107, 255, 0.25);
+  --font-stack: 'Inter', -apple-system, BlinkMacSystemFont,
+    'SF Pro Display', 'Segoe UI', sans-serif;
+  --safe-area-x: 16px;
+  --top-bar-h: 64px;
+  --tab-bar-h: 80px;
+  --shell-max: 430px;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  text-rendering: optimizeLegibility;
+}
+
 body {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  max-width: 42rem;
-  margin: 2rem auto;
-  padding: 0 1rem;
-  color: #222;
-  background: #fff;
+  font-family: var(--font-stack);
+  text-rendering: optimizeLegibility;
+  margin: 0;
+  padding: 0;
+  color: var(--color-text);
+  background: var(--color-bg);
+  font-weight: 400;
   line-height: 1.5;
+  text-align: left;
 }
 
-nav a {
-  margin-right: 1rem;
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  text-align: left;
 }
 
-form {
-  margin: 1rem 0;
+/* Layout shell: centered phone-width column on desktop. */
+.phone-shell {
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
 }
 
+.top-bar {
+  height: var(--top-bar-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--safe-area-x);
+  background: var(--color-card);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.top-bar-title {
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin-right: auto;
+}
+
+.shell-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Page content area: 16px SafeArea padding on every page. */
+.safe-area {
+  flex: 1;
+  padding-left: var(--safe-area-x);
+  padding-right: var(--safe-area-x);
+  padding-top: var(--safe-area-x);
+  padding-bottom: var(--safe-area-x);
+  background: var(--color-bg);
+  text-align: left;
+}
+
+/* Cards: white, 16px radius, card shadow, 16px padding. */
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 16px;
+  border: 1px solid var(--color-border);
+}
+
+/* Buttons: every button meets the 44px touch target. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-button);
+  font-family: var(--font-stack);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.5;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  text-decoration: none;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+
+.btn:hover {
+  filter: brightness(0.95);
+}
+
+.btn:active {
+  transform: scale(0.98);
+  filter: brightness(0.9);
+}
+
+.btn:disabled,
+.btn[disabled],
+.btn.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary {
+  background: var(--gradient-primary);
+  color: var(--color-card);
+  box-shadow: var(--shadow-fab);
+}
+
+.btn-secondary {
+  background: var(--color-card);
+  border: 1.5px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-tertiary {
+  background: transparent;
+  border: none;
+  color: var(--color-primary);
+}
+
+/* Loading state: spinner shown inside the button. */
+.btn.is-loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.btn.is-loading::after {
+  content: "";
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: btn-spin 0.8s linear infinite;
+}
+
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Native button elements get the base treatment too. */
+button {
+  font-family: var(--font-stack);
+  min-height: 44px;
+  border-radius: var(--radius-button);
+  font-weight: 600;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button:hover {
+  filter: brightness(0.95);
+}
+
+button:active {
+  transform: scale(0.98);
+  filter: brightness(0.9);
+}
+
+button:disabled,
+button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Mobile bottom tab bar: 80px tall. Pure HTML+CSS. */
+.tab-bar {
+  height: var(--tab-bar-h);
+  display: flex;
+  align-items: stretch;
+  background: var(--color-card);
+  border-top: 1px solid var(--color-border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tab-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-button);
+  transition: all 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tab-item:hover {
+  filter: brightness(0.95);
+}
+
+.tab-item:active {
+  transform: scale(0.98);
+  filter: brightness(0.9);
+}
+
+.tab-item.is-active {
+  color: var(--color-primary);
+}
+
+.tab-create {
+  background: var(--gradient-primary);
+  color: var(--color-card);
+  box-shadow: var(--shadow-fab);
+  margin: 8px 4px;
+}
+
+/* Sidebar: hidden on mobile, replaces the tab bar on desktop. */
+.sidebar {
+  display: none;
+}
+
+.shell-footer {
+  padding: 8px var(--safe-area-x);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-align: left;
+}
+
+/* Legacy message blocks restyled as cards. */
+.error,
+.info,
+.notice,
+.banner {
+  background: var(--color-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.error {
+  border-left: 4px solid var(--color-primary);
+}
+
+img.report-photo {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-card);
+}
+
+/* Form fields as grouped cells. */
 label {
   display: block;
   margin: 0.75rem 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-transform: uppercase;
 }
 
 input[type="email"],
@@ -29,49 +319,78 @@ input[type="number"] {
   display: block;
   width: 100%;
   max-width: 24rem;
-  padding: 0.4rem;
+  box-sizing: border-box;
+  padding: 0 16px;
+  min-height: 44px;
   margin-top: 0.25rem;
-  border: 1px solid #666;
+  font-size: 16px;
+  font-family: var(--font-stack);
+  color: var(--color-text);
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  text-transform: none;
 }
 
-button {
-  padding: 0.5rem 1rem;
-  margin-top: 0.5rem;
-}
-
-.error {
-  border: 1px solid #900;
-  padding: 0.5rem;
-}
-
-.info {
-  border: 1px solid #060;
-  padding: 0.5rem;
-}
-
-.notice {
-  border: 1px solid #555;
-  padding: 0.5rem;
-}
-
-.banner {
-  border: 2px solid #555;
-  padding: 0.5rem;
-  font-weight: bold;
-}
-
-img.report-photo {
-  max-width: 100%;
-  height: auto;
+input:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 fieldset {
-  border: 1px solid #666;
-  padding: 0.5rem 1rem;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 16px;
+  margin: 1rem 0;
+}
+
+form {
   margin: 1rem 0;
 }
 
 dt {
-  font-weight: bold;
+  font-weight: 700;
   margin-top: 0.5rem;
+  color: var(--color-text);
+}
+
+dd {
+  color: var(--color-text-secondary);
+}
+
+/* Desktop: tab bar collapses to a sidebar next to the content. */
+@media (min-width: 768px) {
+  .phone-shell {
+    max-width: 960px;
+  }
+
+  .shell-body {
+    flex-direction: row;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 200px;
+    flex-shrink: 0;
+    padding: var(--safe-area-x);
+    background: var(--color-card);
+    border-right: 1px solid var(--color-border);
+  }
+
+  .sidebar .tab-item {
+    flex: none;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 0 16px;
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .tab-bar {
+    display: none;
+  }
 }

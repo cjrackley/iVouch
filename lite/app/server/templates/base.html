@@ -7,20 +7,32 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header>
-<nav>
-<a href="/account">Account</a>
-<a href="/upload">Upload</a>
-<a href="/login">Log in</a>
-<a href="/signup">Sign up</a>
-<a href="/logout">Log out</a>
-</nav>
+<div class="phone-shell">
+<header class="top-bar">
+<span class="top-bar-title">iVouch Lite</span>
+<a class="btn btn-secondary" href="/login">Log in</a>
+<a class="btn btn-primary" href="/signup">Sign up</a>
+<a class="btn btn-tertiary" href="/logout">Log out</a>
+<a class="btn btn-tertiary top-bar-gear" href="/account" aria-label="Account settings">&#9881;</a>
 </header>
-<main>
+<div class="shell-body">
+<nav class="sidebar" aria-label="Primary">
+<a class="tab-item" href="/map">Map</a>
+<a class="tab-item tab-create" href="/upload">Create</a>
+<a class="tab-item" href="/account">Profile</a>
+</nav>
+<main class="safe-area">
 {% block content %}{% endblock %}
 </main>
-<footer>
+</div>
+<nav class="tab-bar" aria-label="Primary">
+<a class="tab-item" href="/map">Map</a>
+<a class="tab-item tab-create" href="/upload">Create</a>
+<a class="tab-item" href="/account">Profile</a>
+</nav>
+<footer class="shell-footer">
 <p>iVouch Lite demo build.</p>
 </footer>
+</div>
 </body>
 </html>
