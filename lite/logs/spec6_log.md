@@ -255,6 +255,30 @@ complete.
 Commit: 6.8 recorded below.
 
 # Spec status: 7/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7, 6.8); open: 6.9, 6.10, 6.2
-- Next: 6.9 login/signup restyle ONLY (no OAuth, no forgot-password).
+- Roster: 6.9 auth restyle dispatched 2026-10-31T03:44:49-04:00
+  (native, inherit).
+
+### Task 6.9 implement, attempt 1
+- Objective: 6.9 Login/signup restyle, no new auth
+- Touched: templates/login.html, templates/signup.html (restyle only)
+- Created: tests/test_auth_restyle.py (7 tests)
+- Tests: python -m pytest lite/tests -q -- 237 passed (230 prior + 7 new), confirmed by orchestrator in-session run (escalated path for sockets)
+- Test integrity: no locked-path edits; one self-authored assertion fixed in the new file (gradient asserted in style.css, not page HTML)
+- Dependencies: none added
+- Resources: within 60-min budget; TestClient page tests only
+- Mocks/blocked: none; ONE require_escalated approval for sockets
+- Decisions: centered onboarding (logo/iOS cells/48px gradient button); age gate + disclaimer + data-use notice byte-identical; same POST targets + field names + CSRF; error/notice branches intact; NO OAuth, NO forgot-password
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (6.9): ACCEPTED (native, inherit).
+Gates: (1) diff clean - 2 templates + new test + orchestrator
+log. (2) 237 passed run in-session. (3) 7 new tests
+(onboarding structure, notices intact, no OAuth/forgot, error
+path, centering classes). (4) scan clean. (5) entry complete.
+Commit: 6.9 recorded below.
+
+# Spec status: 8/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7, 6.8, 6.9); open: 6.10, 6.2
+- Next: 6.10 navigation final state (tabs exist; no search/bell).
 
 <!-- END-OF-LOG -->
