@@ -389,7 +389,11 @@ def account_page(request: Request):
     """Show the caller's own account (HTML for browsers).
 
     Non-browser clients are delegated to the spec-2 JSON ``GET
-    /account`` implementation unchanged.
+    /account`` implementation unchanged. The page is the own-profile
+    restyle (spec 6.8, approved scope only): avatar initial, display
+    identifier, Vouches/Saved stats, My Pins/Saved tabs (plain links,
+    no script), and the settings section. No other account's data
+    appears here.
     """
     if not _wants_html(request):
         from lite.app.server import api as api_module
@@ -399,17 +403,68 @@ def account_page(request: Request):
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
+    tab = request.query_params.get("tab")
     token, is_new = _csrf_issue(request)
+    pins = _account_pins(request, account)
+    saved = _saved_items(request, account)
+    email = account["email"]
     return _render(
         "account.html",
         {
             "title": "Your account",
             "csrf_token": token,
-            "email": account["email"],
+            "email": email,
             "verified": bool(account["email_verified"]),
+            "initial": email[:1].upper() if email else "?",
+            "is_reviewer": bool(account.get("reviewer")),
+            "tab": "saved" if tab == "saved" else "pins",
+            "my_pins": pins,
+            "saved_items": saved,
+            "vouch_total": len(pins),
+            "saved_total": len(saved),
         },
         csrf_new=token if is_new else None,
     )
+
+
+def _account_pins(request: Request, account: dict) -> list:
+    """Own accepted reports for the account page, newest first.
+
+    Reuses the existing ``GET /reports`` data (``api.list_reports``)
+    so the My Pins tab shows exactly what the own-reports list
+    holds. Display titles use the same helper as the detail and
+    saved pages; only the caller's own rows are read.
+    """
+    from lite.app.server import api as api_module
+
+    items = api_module.list_reports(request, account)
+    with _page_connection(request) as conn:
+        try:
+            rows = conn.execute(
+                "SELECT id, title FROM reports WHERE account_id = ?",
+                (account["id"],),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            # Database created before the 6.5 columns existed.
+            rows = []
+        stored = {row["id"]: row["title"] for row in rows}
+    pins = []
+    for body in reversed(items):
+        incident = dict(body.get("incident_probs") or {})
+        top = max(incident, key=incident.get) if incident else None
+        pins.append(
+            {
+                "report_id": body["report_id"],
+                "title": api_module.display_title(
+                    stored.get(body["report_id"]),
+                    body.get("claim_text"),
+                    top,
+                    body["report_id"],
+                ),
+                "created_at": body.get("created_at"),
+            }
+        )
+    return pins
 
 
 @pages_router.post("/account/delete")

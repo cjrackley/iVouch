@@ -229,6 +229,32 @@ complete.
 Commit: 6.7 recorded below.
 
 # Spec status: 6/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7); open: 6.8, 6.9, 6.10, 6.2
-- Next: 6.8 account restyle (own profile only; no edit/follow/activity).
+- Roster: 6.8 account dispatched 2026-10-31T03:38:30-04:00
+  (native, inherit).
+
+### Task 6.8 implement, attempt 1
+- Objective: 6.8 Account restyle (own profile only)
+- Touched: templates/account.html (restyled); pages.py (account context + _account_pins helper; delete flow untouched)
+- Created: tests/test_account_restyle.py (8 tests)
+- Tests: python -m pytest lite/tests -q -- 230 passed (222 prior + 8 new), confirmed by orchestrator in-session run (escalated path for sockets)
+- Test integrity: no locked-path edits; one self-authored assertion fixed in the new test file (implementation unchanged)
+- Dependencies: none added
+- Resources: ~5 min of 60 budget; FanStub seam only
+- Mocks/blocked: none; ONE require_escalated approval for sockets
+- Decisions: Vouches stat = own accepted count; Saved tab links to /saved (no dup logic); tabs are plain ?tab= links; Admin -> /review iff reviewer; bio omitted (none stored); no Following/Activity/Edit-Profile//profile
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (6.8): ACCEPTED (native, inherit).
+Gates: (1) diff clean - account.html + pages.py + new test +
+orchestrator log. (2) 230 passed run in-session. (3) 8 new
+tests (layout, stats counts, tabs present/absent, Admin gate,
+delete intact, no cross-account leak). (4) scan clean (own
+email on own page only; no unapproved surface). (5) entry
+complete.
+Commit: 6.8 recorded below.
+
+# Spec status: 7/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7, 6.8); open: 6.9, 6.10, 6.2
+- Next: 6.9 login/signup restyle ONLY (no OAuth, no forgot-password).
 
 <!-- END-OF-LOG -->

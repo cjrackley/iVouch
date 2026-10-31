@@ -1,18 +1,147 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+.account-hero {
+  text-align: center;
+}
+.account-avatar {
+  width: 80px;
+  height: 80px;
+  min-height: 80px;
+  border-radius: 50%;
+  background: var(--gradient-primary);
+  color: var(--color-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 700;
+}
+.account-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+.account-stats {
+  display: flex;
+  gap: 8px;
+  text-align: center;
+}
+.account-stat {
+  flex: 1;
+  text-align: center;
+}
+.account-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+  display: block;
+}
+.account-stat-label {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  display: block;
+}
+.account-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+.account-tabs .btn {
+  flex: 1;
+}
+.account-pin-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.account-pin-title {
+  font-weight: 600;
+  color: var(--color-text);
+}
+.account-pin-meta {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  display: block;
+}
+</style>
 <h1>Your account</h1>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-<p>Email address: {{ email }}</p>
+<div class="card account-hero">
+<span class="account-avatar" role="presentation">{{ initial }}</span>
+<p class="account-name">{{ email }}</p>
+<div class="account-stats">
+<div class="card account-stat">
+<span class="account-stat-value">{{ vouch_total }}</span>
+<span class="account-stat-label">Vouches</span>
+</div>
+<div class="card account-stat">
+<span class="account-stat-value">{{ saved_total }}</span>
+<span class="account-stat-label">Saved</span>
+</div>
+</div>
+</div>
+<nav class="account-tabs" aria-label="Profile sections">
+{% if tab == "saved" %}
+<a class="btn btn-secondary" href="/account?tab=pins">My Pins</a>
+<a class="btn btn-primary" href="/account?tab=saved" aria-current="page">Saved</a>
+{% else %}
+<a class="btn btn-primary" href="/account?tab=pins" aria-current="page">My Pins</a>
+<a class="btn btn-secondary" href="/account?tab=saved">Saved</a>
+{% endif %}
+</nav>
+{% if tab == "saved" %}
+{% if saved_items %}
+<ul class="saved-list">
+{% for item in saved_items %}
+<li class="card">
+<a class="account-pin-link" href="/shared/{{ item.report_id }}">
+<span class="account-pin-title">{{ item.title }}</span>
+</a>
+</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No saved vouches yet</p>
+{% endif %}
+<a class="btn btn-secondary" href="/saved">Open Saved Places</a>
+{% else %}
+{% if my_pins %}
+<ul class="pins-list">
+{% for pin in my_pins %}
+<li class="card">
+<a class="account-pin-link" href="/reports/{{ pin.report_id }}">
+<span class="account-pin-title">{{ pin.title }}</span>
+<span class="account-pin-meta">Submitted {{ pin.created_at }}</span>
+</a>
+</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No pins yet. Share your first vouch from the map.</p>
+<a class="btn btn-primary" href="/upload">Add a vouch</a>
+{% endif %}
+<a class="btn btn-secondary" href="/reports">Open My Pins</a>
+{% endif %}
+<h2>Settings</h2>
+<div class="card">
 {% if verified %}
 <p>Email status: verified.</p>
 {% else %}
 <p>Email status: not verified.</p>
 <form method="post" action="/verify-resend">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-<button type="submit">Send a new verification email</button>
+<button type="submit" class="btn btn-secondary">Send a new verification email</button>
 </form>
 {% endif %}
+<p><a class="btn btn-tertiary" href="/logout">Log out</a></p>
+{% if is_reviewer %}
+<p><a class="btn btn-secondary" href="/review">Admin</a></p>
+{% endif %}
+</div>
 <h2>Delete account</h2>
+<div class="card">
 <p>Deleting your account removes your reports and uploaded files. This
 cannot be undone.</p>
 <form method="post" action="/account/delete">
@@ -21,6 +150,7 @@ cannot be undone.</p>
 <input type="checkbox" name="confirm" value="yes" required>
 Yes, delete my account and my uploads.
 </label>
-<button type="submit">Delete my account</button>
+<button type="submit" class="btn btn-secondary">Delete my account</button>
 </form>
+</div>
 {% endblock %}
