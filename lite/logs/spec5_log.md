@@ -114,5 +114,54 @@ unlocked for this brief only (§5.2 + Lite §6 rewrite rule).
 Commit: (recorded after commit)
 
 # Spec status: 3/5 ACCEPTED (5.3+5.4 jointly); open: 5.5
+- Roster: 5.5 DEMO update dispatched 2026-10-30 (docs-only brief).
 
-<!-- END-OF-LOG -->
+### Task 5.5 final demo update, attempt 1
+- Objective: extend lite/DEMO.md with a map section (spec-5 objective 5.5, docs brief)
+- Touched: lite/DEMO.md (edited step 10 only; all other content preserved)
+- Created: none
+- Tests: none (docs only per brief; must_pass empty, no suite run, no server start)
+- Test integrity: no locked-path edits; no test, fixture, or expected-value changes
+- Dependencies: none added
+- Resources: well within 30 min budget; no network, no models, no GPU used
+- Checkpoint: n/a (short docs task)
+- Mocks/blocked: none
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (5.5): ACCEPTED (native, inherit).
+Gates: (1) diff clean - DEMO.md step 10 only (+23/-7), all other
+content preserved. (2) docs-only: no code changed, so no suite
+regression possible from this diff; suite stands at 167 passed from
+the 5.3/5.4 gate. (3) integrity: no locked paths, no tests touched.
+(4) honesty: ASCII-only; no accuracy claims - states human visual
+judgement only, out-of-scope automated check, and the data-use rule.
+(5) entry complete.
+Commit: de2cdba (lite/DEMO.md + lite/logs/spec5_log.md; entry file
+gitignored by lite/work rule).
+
+### Orchestrator fresh-checkout map run (5.5 verification)
+- Fresh tree: workspace HEAD (incl. 5.3/5.4 commit) synced to sandbox
+  temp dir; server started on port 8002 with LITE_JWT_SECRET set;
+  exercised over real HTTP with httpx (no TestClient).
+- Seed: 2 verified accounts; 2 live uploads with required location
+  + consent (lat/lng pairs); both report ids returned.
+- Observed: GET /api/incidents (as other user) returned both dots
+  with display_lat/display_lng and no emails; GET /shared/{id} 200;
+  GET /shared/photos/{id} 200 via cookie session (Bearer-only
+  request correctly 404s - route is documented cookie-session);
+  GET /map 200 with /api/incidents wiring, compare line, both
+  disclaimers, and fallback container.
+- Friction (env, not product): login rate limit is 5/IP/900s, so
+  repeated script iterations 429'd; fixed by one clean run after a
+  server restart. Page POST /login answers 303 (accepted alongside
+  200/302 in the probe). Probe JPEGs are small (678-byte photo
+  response), so the size floor was lowered - bytes verified present.
+- Pixel rendering not eyeballed (no browser in env); all map wiring
+  asserted server-side over real HTTP.
+- Result: MAP RUN OK.
+
+# Spec status: 5/5 ACCEPTED; spec-5 COMPLETE.
+- Commit for 5.5 recorded below. Suite: 167 passed. Lite specs 0-5
+  all ACCEPTED - demo-ready app, docs, and manual fresh-checkout
+  verifications done (4.4 full run + 5.5 map run).

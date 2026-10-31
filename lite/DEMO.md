@@ -101,13 +101,29 @@ Use two accounts so both sides of the sharing model are visible:
    approximate location, and verdict are visible, and that no email,
    exact coordinates, or file paths leak.
 
-10. Map page: following-spec (spec 5, not yet built).
+10. Open the map and compare photo vs place (about 2 minutes).
 
-    There is currently no `/map` page in Lite; the login-required map
-    with jittered dots arrives with spec 5. When it lands, this step
-    becomes: as either user, open `/map` and confirm the accepted
-    upload appears as a jittered dot whose photo matches the mapped
-    area. Until then, skip this step.
+    Upload first if needed: on `/upload` the location is required
+    plus the consent checkbox. Set the pin either with the geolocate
+    button (browser location) or by dragging/clicking the picker pin,
+    then tick consent and submit. Then, as either logged-in user, open
+    `GET /map` (login required; anonymous visitors are redirected to
+    login). Each accepted report appears as a dot at its jittered
+    approximate location. Click a dot to open its popup, then follow
+    the popup link to open the community page for that report. On the
+    community page, compare the photo against the map using the
+    street/satellite toggle: the map defaults to street view and the
+    toggle switches the same area to satellite imagery, so you can
+    judge visually whether the scene plausibly matches the mapped
+    area.
+
+    Out of scope: there is no automated scene-location check.
+    Matching photo to place is human visual judgement only; Lite
+    never claims a photo matches its location.
+
+    Data-use rule still applies on the map and community page.
+    Shared: photo, claim, approximate location, verdict. Never
+    shared: email, exact coordinates, file paths.
 
 11. DELETE flow (optional, about 1 minute).
 
