@@ -116,6 +116,33 @@ no accuracy claims; no browser claims. (5) entry complete.
 Commit: 6.6 recorded below.
 
 # Spec status: 2/10 ACCEPTED (6.1, 6.6); open: 6.3, 6.4, 6.5, 6.7, 6.8, 6.9, 6.10, 6.2
-- Next: 6.3 map page restyle + bottom sheet (Save backend now ready).
+- Roster: 6.3 map restyle dispatched 2026-10-31T02:04:57-04:00
+  (native, inherit).
+
+### Task 6.3 implement, attempt 1
+- Objective: map page restyle + bottom sheet
+- Touched: templates/map.html (restyled); pages.py (map_page passes csrf_token + saved_ids)
+- Created: tests/test_map_restyle.py (6 page tests)
+- Tests: python -m pytest lite/tests -q -- 194 passed (188 prior + 6 new), confirmed by orchestrator in-session run (escalated path for sockets)
+- Test integrity: no locked-path edits; spec-5 map/wording/design suites green unchanged
+- Dependencies: none added (MapLibre 5.6.0 pinned CDN + OpenFreeMap only)
+- Resources: within 90-min budget; FanStub seam only
+- Mocks/blocked: none; ONE require_escalated approval for sockets
+- Decisions: sheet shows incident type (title is 6.5's work, approved but not yet built - 6.5 brief switches the sheet to title); vouch count omitted from sheet (stays out: approved interactions cover vouch actions/counts on detail+feed, not the map sheet); coincident pins get Prev/Next pager; Recenter falls back to default view on denied geolocation
+- Correction to builder note: title field (6.5) IS user-approved, contrary to the entry's "(6.6 unapproved)"-style remark; sequencing only
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (6.3): ACCEPTED (native, inherit).
+Gates: (1) diff clean - map.html + pages.py + new test file +
+orchestrator log. (2) 194 passed run in-session. (3) 6 new page
+tests (sheet fields, View Details link, Save form targets,
+spec-5 strings intact, no search bar); scan confirms exactly the
+pinned script src + one inline block. (4) honesty: no browser
+claims. (5) entry complete.
+Commit: 6.3 recorded below.
+
+# Spec status: 3/10 ACCEPTED (6.1, 6.6, 6.3); open: 6.4, 6.5, 6.7, 6.8, 6.9, 6.10, 6.2
+- Next: 6.4 report detail (vouch/comment/save/share/edit/delete backend + restyle).
 
 <!-- END-OF-LOG -->

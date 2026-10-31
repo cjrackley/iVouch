@@ -817,9 +817,9 @@ def map_page(request: Request):
     Login required: anonymous callers are redirected to ``/login``
     (an ``<img>``-style anonymous fetch cannot use this page). Dots
     themselves are rendered in-page by fetching the existing spec-5.2
-    ``GET /api/incidents`` endpoint (unchanged); the photo in each
-    popup uses the cookie-session ``/shared/photos/{id}`` route, and
-    the popup links to ``GET /shared/{id}``. The server also renders
+    ``GET /api/incidents`` endpoint (unchanged); the photo in the
+    bottom sheet uses the cookie-session ``/shared/photos/{id}``
+    route, and the sheet links to ``GET /shared/{id}``. The server also renders
     the same report links into the ``map_fallback`` container, so a
     browser whose map library or tiles fail to load still shows the
     reports list instead of a blank map. No scene-vs-location
@@ -851,12 +851,22 @@ def map_page(request: Request):
         if report_id is None:
             continue
         items.append({"report_id": report_id})
+    from lite.app.server import db as db_module
+
+    with _page_connection(request) as conn:
+        saved_ids = db_module.list_saved_report_ids(
+            conn, account_id=account["id"]
+        )
+    token, is_new = _csrf_issue(request)
     return _render(
         "map.html",
         {
             "title": "Map",
             "reports": items,
+            "csrf_token": token,
+            "saved_ids": saved_ids,
         },
+        csrf_new=token if is_new else None,
     )
 
 

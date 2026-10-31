@@ -3,7 +3,118 @@
 <h1>Map</h1>
 <p class="notice">Demo build — results need human review and are not evidence of authenticity.</p>
 <p class="notice">Demo only: photos are visible to logged-in users. Do not upload sensitive images.</p>
-<div id="map" style="height: 480px;"></div>
+<style>
+#map_wrap {
+  position: relative;
+}
+#map {
+  height: calc(100vh - var(--top-bar-h) - var(--tab-bar-h));
+  min-height: 320px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+#map_controls {
+  position: absolute;
+  top: var(--safe-area-x);
+  right: var(--safe-area-x);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#map_zoom_pair {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#map_create {
+  position: absolute;
+  right: var(--safe-area-x);
+  bottom: var(--safe-area-x);
+}
+#map_sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 60%;
+  overflow-y: auto;
+  background: var(--color-card);
+  border-radius: var(--radius-pill) var(--radius-pill) 0 0;
+  box-shadow: var(--shadow-card);
+  padding: var(--safe-area-x);
+  box-sizing: border-box;
+}
+#sheet_grab {
+  width: 48px;
+  height: 5px;
+  margin: 0 auto 12px auto;
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+}
+#sheet_photo {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-card);
+}
+.map-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: none;
+  color: var(--color-card);
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease;
+}
+.map-pill.is-active {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 3px var(--color-card);
+}
+.unsave-button {
+  background: var(--color-secondary);
+  color: var(--color-card);
+  border: none;
+}
+</style>
+<div id="map_wrap" data-saved-ids="{{ saved_ids|join(',') }}">
+<div id="map"></div>
+<div id="map_controls">
+<button type="button" id="map_recenter">Recenter</button>
+<div id="map_zoom_pair">
+<button type="button" id="map_zoom_in" aria-label="Zoom in">+</button>
+<button type="button" id="map_zoom_out" aria-label="Zoom out">-</button>
+</div>
+</div>
+<a id="map_create" class="btn btn-primary" href="/upload">Create Pin +</a>
+<section id="map_sheet" hidden aria-label="Pin details">
+<div id="sheet_grab" role="presentation"></div>
+<button type="button" id="sheet_close">Close</button>
+<img id="sheet_photo" src="" alt="">
+<p id="sheet_incident"></p>
+<div id="sheet_meta"></div>
+<p id="sheet_pager" hidden></p>
+<div id="sheet_page_buttons" hidden>
+<button type="button" id="sheet_prev">Previous pin</button>
+<button type="button" id="sheet_next">Next pin</button>
+</div>
+<p><a id="sheet_details" href="/map">View Details</a></p>
+<form id="sheet_save_form" method="post" action="/saved">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="report_id" id="sheet_save_report" value="">
+<button type="submit" id="sheet_save_button">Save</button>
+</form>
+<form id="sheet_unsave_form" method="post" action="/saved" hidden>
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<button type="submit" id="sheet_unsave_button" class="unsave-button">Saved</button>
+</form>
+</section>
+</div>
 <div id="basemap_toggle">
 <button type="button" id="basemap_street">Street</button>
 <button type="button" id="basemap_satellite">Satellite</button>
@@ -12,7 +123,20 @@
 <p>The map could not be loaded. Reports list:</p>
 <ul>
 {% for item in reports %}
-<li><a href="/shared/{{ item.report_id }}">Report {{ item.report_id }}</a></li>
+<li><a href="/shared/{{ item.report_id }}">Report {{ item.report_id }}</a>
+{% if item.report_id in saved_ids %}
+<form method="post" action="/saved/{{ item.report_id }}/unsave">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<button type="submit" class="unsave-button">Saved</button>
+</form>
+{% else %}
+<form method="post" action="/saved">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="report_id" value="{{ item.report_id }}">
+<button type="submit">Save</button>
+</form>
+{% endif %}
+</li>
 {% endfor %}
 </ul>
 </div>
@@ -24,10 +148,46 @@
   var STREET_STYLE = "https://tiles.openfreemap.org/styles/liberty";
   var SATELLITE_STYLE = "https://tiles.openfreemap.org/styles/bright";
   var COMPARE_LINE = "Compare the photo with this area visually. Lite does not automatically verify that a photo matches its location.";
+  var DEFAULT_CENTER = [0, 20];
+  var DEFAULT_ZOOM = 1;
+  var CATEGORY_COLORS = {
+    fire: "var(--color-primary)",
+    flood: "var(--color-primary)",
+    storm: "var(--color-secondary)",
+    crash: "var(--color-secondary)"
+  };
+  var FALLBACK_COLOR = "var(--color-secondary)";
   var mapEl = document.getElementById("map");
+  var wrapEl = document.getElementById("map_wrap");
   var fallbackEl = document.getElementById("map_fallback");
   var streetButton = document.getElementById("basemap_street");
   var satelliteButton = document.getElementById("basemap_satellite");
+  var recenterButton = document.getElementById("map_recenter");
+  var zoomInButton = document.getElementById("map_zoom_in");
+  var zoomOutButton = document.getElementById("map_zoom_out");
+  var sheetEl = document.getElementById("map_sheet");
+  var sheetClose = document.getElementById("sheet_close");
+  var sheetPhoto = document.getElementById("sheet_photo");
+  var sheetIncident = document.getElementById("sheet_incident");
+  var sheetMeta = document.getElementById("sheet_meta");
+  var sheetPager = document.getElementById("sheet_pager");
+  var sheetPageButtons = document.getElementById("sheet_page_buttons");
+  var sheetPrev = document.getElementById("sheet_prev");
+  var sheetNext = document.getElementById("sheet_next");
+  var sheetDetails = document.getElementById("sheet_details");
+  var sheetSaveForm = document.getElementById("sheet_save_form");
+  var sheetSaveReport = document.getElementById("sheet_save_report");
+  var sheetUnsaveForm = document.getElementById("sheet_unsave_form");
+  var savedIds = {};
+  var savedRaw = wrapEl ? wrapEl.getAttribute("data-saved-ids") : "";
+  (savedRaw || "").split(",").forEach(function (part) {
+    if (part !== "") {
+      savedIds[part] = true;
+    }
+  });
+  var activePill = null;
+  var openGroup = [];
+  var openIndex = 0;
   function showFallback() {
     if (mapEl !== null) {
       mapEl.setAttribute("hidden", "");
@@ -61,8 +221,33 @@
     }
     return [bestKey, bestVal];
   }
-  function popupHtml(props) {
+  function pillColor(top) {
+    if (top !== null && Object.prototype.hasOwnProperty.call(CATEGORY_COLORS, top)) {
+      return CATEGORY_COLORS[top];
+    }
+    return FALLBACK_COLOR;
+  }
+  function groupKey(coords) {
+    return coords[0].toFixed(3) + "," + coords[1].toFixed(3);
+  }
+  function setActivePill(el) {
+    if (activePill !== null && activePill !== el) {
+      activePill.classList.remove("is-active");
+    }
+    activePill = el;
+    if (activePill !== null) {
+      activePill.classList.add("is-active");
+    }
+  }
+  function closeSheet() {
+    if (sheetEl !== null) {
+      sheetEl.setAttribute("hidden", "");
+    }
+    setActivePill(null);
+  }
+  function renderSheet(props) {
     var top = topKey(props.incident_probs || {});
+    var reportId = String(props.report_id);
     var photoUrl = "/shared/photos/" + props.report_id;
     var sharedUrl = "/shared/" + props.report_id;
     var reasons = props.reasons || [];
@@ -70,16 +255,58 @@
     for (var i = 0; i < reasons.length; i++) {
       items += "<li>" + escapeHtml(reasons[i]) + "</li>";
     }
-    return "<div class=\"map-popup\">"
-      + "<img src=\"" + escapeHtml(photoUrl) + "\" alt=\"Photo for report " + escapeHtml(props.report_id) + "\">"
-      + "<p>Incident type: " + escapeHtml(top[0]) + " (" + escapeHtml(top[1]) + ")</p>"
-      + "<p>Severity: " + escapeHtml(props.top_severity) + "</p>"
+    sheetPhoto.setAttribute("src", photoUrl);
+    sheetPhoto.setAttribute("alt", "Photo for report " + reportId);
+    sheetIncident.textContent = "Incident type: " + top[0] + " (" + top[1] + ")";
+    sheetMeta.innerHTML = "<p>Severity: " + escapeHtml(props.top_severity) + "</p>"
       + "<p>Assessment: " + escapeHtml(props.verdict) + "</p>"
       + "<ul>" + items + "</ul>"
       + "<p>Submitted: " + escapeHtml(props.created_at) + "</p>"
-      + "<p>" + COMPARE_LINE + "</p>"
-      + "<p><a href=\"" + escapeHtml(sharedUrl) + "\">Open community page</a></p>"
-      + "</div>";
+      + "<p>" + escapeHtml(COMPARE_LINE) + "</p>";
+    sheetDetails.setAttribute("href", sharedUrl);
+    sheetSaveReport.setAttribute("value", reportId);
+    sheetUnsaveForm.setAttribute("action", "/saved/" + reportId + "/unsave");
+    if (savedIds[reportId] === true) {
+      sheetSaveForm.setAttribute("hidden", "");
+      sheetUnsaveForm.removeAttribute("hidden");
+    } else {
+      sheetUnsaveForm.setAttribute("hidden", "");
+      sheetSaveForm.removeAttribute("hidden");
+    }
+    if (openGroup.length > 1) {
+      sheetPager.textContent = "Pin " + (openIndex + 1) + " of " + openGroup.length;
+      sheetPager.removeAttribute("hidden");
+      sheetPageButtons.removeAttribute("hidden");
+    } else {
+      sheetPager.setAttribute("hidden", "");
+      sheetPageButtons.setAttribute("hidden", "");
+    }
+    sheetEl.removeAttribute("hidden");
+  }
+  function openPin(group, index, pillEl) {
+    openGroup = group;
+    openIndex = index;
+    setActivePill(pillEl);
+    renderSheet(group[index].properties);
+  }
+  if (sheetClose !== null) {
+    sheetClose.addEventListener("click", closeSheet);
+  }
+  if (sheetPrev !== null) {
+    sheetPrev.addEventListener("click", function () {
+      if (openGroup.length > 1) {
+        openIndex = (openIndex + openGroup.length - 1) % openGroup.length;
+        renderSheet(openGroup[openIndex].properties);
+      }
+    });
+  }
+  if (sheetNext !== null) {
+    sheetNext.addEventListener("click", function () {
+      if (openGroup.length > 1) {
+        openIndex = (openIndex + 1) % openGroup.length;
+        renderSheet(openGroup[openIndex].properties);
+      }
+    });
   }
   if (typeof maplibregl === "undefined" || mapEl === null) {
     showFallback();
@@ -88,15 +315,41 @@
   var map = new maplibregl.Map({
     container: "map",
     style: STREET_STYLE,
-    center: [0, 20],
-    zoom: 1
+    center: DEFAULT_CENTER,
+    zoom: DEFAULT_ZOOM
   });
-  map.addControl(new maplibregl.NavigationControl());
   streetButton.addEventListener("click", function () {
     map.setStyle(STREET_STYLE);
   });
   satelliteButton.addEventListener("click", function () {
     map.setStyle(SATELLITE_STYLE);
+  });
+  recenterButton.addEventListener("click", function () {
+    function goHome() {
+      map.easeTo({ center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM });
+    }
+    if (!("geolocation" in navigator)) {
+      goHome();
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        map.easeTo({
+          center: [pos.coords.longitude, pos.coords.latitude],
+          zoom: 12
+        });
+      },
+      function () {
+        goHome();
+      },
+      { timeout: 8000 }
+    );
+  });
+  zoomInButton.addEventListener("click", function () {
+    map.zoomIn();
+  });
+  zoomOutButton.addEventListener("click", function () {
+    map.zoomOut();
   });
   map.on("load", hideFallback);
   map.on("error", showFallback);
@@ -113,17 +366,34 @@
         return;
       }
       var features = collection.features || [];
+      var groups = {};
+      var order = [];
       for (var i = 0; i < features.length; i++) {
-        (function (feature) {
-          var coords = feature.geometry.coordinates;
-          var popup = new maplibregl.Popup({ offset: 25 }).setHTML(
-            popupHtml(feature.properties)
-          );
-          new maplibregl.Marker()
+        var key = groupKey(features[i].geometry.coordinates);
+        if (!Object.prototype.hasOwnProperty.call(groups, key)) {
+          groups[key] = [];
+          order.push(key);
+        }
+        groups[key].push(features[i]);
+      }
+      for (var g = 0; g < order.length; g++) {
+        (function (group) {
+          var first = group[0].properties;
+          var top = topKey(first.incident_probs || {});
+          var coords = group[0].geometry.coordinates;
+          var el = document.createElement("button");
+          el.setAttribute("type", "button");
+          el.className = "map-pill";
+          el.style.background = pillColor(top[0]);
+          el.textContent = String(group.length);
+          el.setAttribute("aria-label", "Pin, incident type " + top[0]);
+          el.addEventListener("click", function () {
+            openPin(group, 0, el);
+          });
+          new maplibregl.Marker({ element: el })
             .setLngLat(coords)
-            .setPopup(popup)
             .addTo(map);
-        })(features[i]);
+        })(groups[order[g]]);
       }
     })
     .catch(showFallback);
