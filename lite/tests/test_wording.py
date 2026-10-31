@@ -5,8 +5,12 @@ fabricated contexts (no app, no encoder, no network): every rendered
 template has the exact label tokens stripped and must then contain no
 certainty words; result pages carry the two exact honesty lines; the
 label set is exactly likely-real / needs-review / likely-manipulated;
-and no template carries JavaScript except the upload form's single
-file-picker script. A final TestClient pass (no clip encoder attached,
+and script tags are limited to a version-pinned CDN allowlist
+(MapLibre GL JS, spec-5.3) plus at most one sanctioned inline block
+per template (the upload file-picker gate or the map wiring block),
+identified by required marker content rather than by file name: every
+other script tag (unpinned/unknown src, any further inline block)
+fails. A final TestClient pass (no clip encoder attached,
 no upload model involved) proves the pages render server-side, so no
 browser automation is required in Lite.
 """
@@ -34,6 +38,22 @@ LABELS = ("likely-real", "needs-review", "likely-manipulated")
 WORD_RE = re.compile(r"\bproven\b|\bfake\b|\breal\b", re.IGNORECASE)
 LABEL_RE = re.compile(r"likely-real|needs-review|likely-manipulated")
 SCRIPT_OPEN_RE = re.compile(r"<script[\s>]", re.IGNORECASE)
+SCRIPT_TAG_RE = re.compile(r"<script\b[^>]*>", re.IGNORECASE)
+SCRIPT_CLOSE_RE = re.compile(r"</script\s*>", re.IGNORECASE)
+SCRIPT_SRC_RE = re.compile(
+    r"<script[^>]*\bsrc\s*=\s*\"([^\"]+)\"", re.IGNORECASE
+)
+# Version-pinned CDN scripts sanctioned in any template (spec-5.3
+# MapLibre via CDN). Exact URLs copied from the templates themselves;
+# any other src (unpinned, unknown host, unknown path) stays forbidden.
+SCRIPT_SRC_ALLOWLIST = (
+    "https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js",
+)
+# Sanctioned inline blocks, identified by required marker content
+# rather than by file name: the upload file-picker gating block, and
+# the map wiring block (MapLibre init, incidents fetch, fallback).
+UPLOAD_PICKER_MARKERS = ("location_consented", "upload_submit")
+MAP_INLINE_MARKERS = ("maplibregl", "showFallback", "/api/incidents")
 PHRASE = "verified real"
 
 _env = jinja2.Environment(
@@ -189,21 +209,38 @@ def test_labels_are_exactly_the_three():
         assert "report.verdict" in source, name
 
 
-def test_no_javascript_except_upload_file_picker():
+def test_no_javascript_except_sanctioned_map_scripts():
     for path in sorted(TEMPLATES_DIR.glob("*.html")):
         source = path.read_text(encoding="utf-8")
-        opens = len(SCRIPT_OPEN_RE.findall(source))
-        closes = len(re.findall(r"</script\s*>", source, re.IGNORECASE))
+        opens = list(SCRIPT_TAG_RE.finditer(source))
+        closes = len(SCRIPT_CLOSE_RE.findall(source))
+        assert closes == len(opens), path.name
+        inline_bodies: list[str] = []
+        for tag in opens:
+            src = SCRIPT_SRC_RE.search(tag.group(0))
+            if src is not None:
+                assert src.group(1) in SCRIPT_SRC_ALLOWLIST, (
+                    f"{path.name} loads unsanctioned script src "
+                    f"{src.group(1)!r}"
+                )
+                continue
+            rest = source[tag.end():]
+            close = SCRIPT_CLOSE_RE.search(rest)
+            assert close is not None, path.name
+            inline_bodies.append(rest[:close.start()])
+        assert len(inline_bodies) <= 1, (
+            f"{path.name} carries {len(inline_bodies)} inline scripts"
+        )
+        for body in inline_bodies:
+            assert (
+                all(m in body for m in UPLOAD_PICKER_MARKERS)
+                or all(m in body for m in MAP_INLINE_MARKERS)
+            ), f"{path.name} carries an unsanctioned inline script"
         if path.name == "upload.html":
-            assert opens == 1, source
-            assert closes == 1, source
-            script = source[source.lower().index("<script"):
-                            source.lower().index("</script")]
-            assert "location_consented" in script
-            assert "upload_submit" in script
-        else:
-            assert opens == 0, path.name
-            assert closes == 0, path.name
+            assert any(
+                all(m in body for m in UPLOAD_PICKER_MARKERS)
+                for body in inline_bodies
+            ), "upload page lost its file-picker gating script"
 
 
 def test_pages_render_server_side_without_javascript(

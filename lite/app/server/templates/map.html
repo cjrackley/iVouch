@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Map</h1>
+<p class="notice">Demo build — results need human review and are not evidence of authenticity.</p>
+<p class="notice">Demo only: photos are visible to logged-in users. Do not upload sensitive images.</p>
+<div id="map" style="height: 480px;"></div>
+<div id="basemap_toggle">
+<button type="button" id="basemap_street">Street</button>
+<button type="button" id="basemap_satellite">Satellite</button>
+</div>
+<div id="map_fallback" hidden>
+<p>The map could not be loaded. Reports list:</p>
+<ul>
+{% for item in reports %}
+<li><a href="/shared/{{ item.report_id }}">Report {{ item.report_id }}</a></li>
+{% endfor %}
+</ul>
+</div>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script>
+(function () {
+  var INCIDENTS_URL = "/api/incidents";
+  var STREET_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+  var SATELLITE_STYLE = "https://tiles.openfreemap.org/styles/bright";
+  var COMPARE_LINE = "Compare the photo with this area visually. Lite does not automatically verify that a photo matches its location.";
+  var mapEl = document.getElementById("map");
+  var fallbackEl = document.getElementById("map_fallback");
+  var streetButton = document.getElementById("basemap_street");
+  var satelliteButton = document.getElementById("basemap_satellite");
+  function showFallback() {
+    if (mapEl !== null) {
+      mapEl.setAttribute("hidden", "");
+    }
+    if (fallbackEl !== null) {
+      fallbackEl.removeAttribute("hidden");
+    }
+  }
+  function hideFallback() {
+    if (fallbackEl !== null) {
+      fallbackEl.setAttribute("hidden", "");
+    }
+  }
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function topKey(probs) {
+    var bestKey = null;
+    var bestVal = -1;
+    for (var key in probs) {
+      if (Object.prototype.hasOwnProperty.call(probs, key)) {
+        if (probs[key] > bestVal) {
+          bestVal = probs[key];
+          bestKey = key;
+        }
+      }
+    }
+    return [bestKey, bestVal];
+  }
+  function popupHtml(props) {
+    var top = topKey(props.incident_probs || {});
+    var photoUrl = "/shared/photos/" + props.report_id;
+    var sharedUrl = "/shared/" + props.report_id;
+    var reasons = props.reasons || [];
+    var items = "";
+    for (var i = 0; i < reasons.length; i++) {
+      items += "<li>" + escapeHtml(reasons[i]) + "</li>";
+    }
+    return "<div class=\"map-popup\">"
+      + "<img src=\"" + escapeHtml(photoUrl) + "\" alt=\"Photo for report " + escapeHtml(props.report_id) + "\">"
+      + "<p>Incident type: " + escapeHtml(top[0]) + " (" + escapeHtml(top[1]) + ")</p>"
+      + "<p>Severity: " + escapeHtml(props.top_severity) + "</p>"
+      + "<p>Assessment: " + escapeHtml(props.verdict) + "</p>"
+      + "<ul>" + items + "</ul>"
+      + "<p>Submitted: " + escapeHtml(props.created_at) + "</p>"
+      + "<p>" + COMPARE_LINE + "</p>"
+      + "<p><a href=\"" + escapeHtml(sharedUrl) + "\">Open community page</a></p>"
+      + "</div>";
+  }
+  if (typeof maplibregl === "undefined" || mapEl === null) {
+    showFallback();
+    return;
+  }
+  var map = new maplibregl.Map({
+    container: "map",
+    style: STREET_STYLE,
+    center: [0, 20],
+    zoom: 1
+  });
+  map.addControl(new maplibregl.NavigationControl());
+  streetButton.addEventListener("click", function () {
+    map.setStyle(STREET_STYLE);
+  });
+  satelliteButton.addEventListener("click", function () {
+    map.setStyle(SATELLITE_STYLE);
+  });
+  map.on("load", hideFallback);
+  map.on("error", showFallback);
+  fetch(INCIDENTS_URL, { credentials: "same-origin" })
+    .then(function (resp) {
+      if (!resp.ok) {
+        showFallback();
+        return null;
+      }
+      return resp.json();
+    })
+    .then(function (collection) {
+      if (collection === null) {
+        return;
+      }
+      var features = collection.features || [];
+      for (var i = 0; i < features.length; i++) {
+        (function (feature) {
+          var coords = feature.geometry.coordinates;
+          var popup = new maplibregl.Popup({ offset: 25 }).setHTML(
+            popupHtml(feature.properties)
+          );
+          new maplibregl.Marker()
+            .setLngLat(coords)
+            .setPopup(popup)
+            .addTo(map);
+        })(features[i]);
+      }
+    })
+    .catch(showFallback);
+})();
+</script>
+{% endblock %}

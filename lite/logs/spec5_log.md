@@ -67,5 +67,52 @@ beyond sanctioned stub; CDN hosts declared (unpkg, openfreemap).
 Commit: (recorded after commit)
 
 # Spec status: 2/5 ACCEPTED; open: 5.3+5.4, 5.5
+- Commit f9dbad7 recorded for joint 5.1/5.2 (4 files, working tree clean after).
+- Roster: 5.3 map page + 5.4 photo visibility combined brief dispatched 2026-10-30T18:36:01-04:00.
+
+### Task 5.3 + 5.4 implement, attempt 1
+- Objective: map page (5.3) + photo visibility (5.4) with tests
+- Touched: lite/app/server/pages.py (added GET /map route + docstring line)
+- Created: lite/app/server/templates/map.html, lite/tests/test_map.py
+- Tests: python -m pytest lite/tests/test_map.py -q -- 4 passed; python -m pytest lite/tests -q -- 166 passed, 1 failed (locked test_wording.py::test_no_javascript_except_upload_file_picker asserts zero script tags outside upload.html; spec-5 mandates MapLibre via CDN so map.html needs 2 -- orchestrator amendment required, file untouched)
+- Test integrity: no locked-path edits; failures fixed nowhere (single failure is a spec-vs-locked-test conflict, not implementation error)
+- Dependencies: none added (MapLibre 5.6.0 via unpkg CDN + OpenFreeMap tiles are page-runtime hosts per brief network_allowed, not installed packages)
+- Resources: about 25 min of 60 budget; CPU only, no GPU used
+- Checkpoint: lite/work/checkpoints/spec-5-5.3.md
+- Mocks/blocked: stubbed CLIP encoder for seeded-report setup (fast, per brief); one approved require_escalated sandbox approval for socket access (TestClient fails with WinError 10013 without it); no browser available so pixel rendering not eyeballed -- all map wiring asserted server-side via TestClient, logged honestly in test docstring
+- Signals: none (needs orchestrator ruling on the locked wording-test amendment, recorded as a note not a stop signal)
+- Status: PROVISIONAL
+
+### Task lite-spec-5 5.3+5.4 wording rewrite, attempt 2
+- Objective: 5.3 Map page + 5.4 photo visibility (wording-test rewrite per orchestrator ruling)
+- Touched: lite/tests/test_wording.py (edited; unlocked for this brief only per orchestrator ruling)
+- Created: lite/work/checkpoints/spec-5-5.3-fix-entry.md (this entry), lite/work/checkpoints/spec-5-5.3-fix.md (checkpoint note)
+- Tests: python -m pytest lite/tests -q -- 167 passed
+- Test integrity: no-script test rewritten as a general allowlist policy, not a map.html exception: <script> tags with src must exactly match SCRIPT_SRC_ALLOWLIST (single pinned URL https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js, copied from map.html line 20; upload.html carries the same URL only as a JS string for dynamic injection, no static src); at most one inline <script> per template, and its body must contain either the upload-picker markers (location_consented + upload_submit) or the map-wiring markers (maplibregl + showFallback + /api/incidents), identified by content not file name; every other script tag (unpinned/unknown src, extra inline block) fails. Upload picker presence still asserted. All other assertions in the file (certainty words, label set, demo/data-use lines, server-side render pass) untouched in intent. No production code changes; map.html/upload.html read-only.
+- Dependencies: none added
+- Resources: ~2 min of 30 budget (20:27-20:29 EDT); no GPU used
+- Checkpoint: lite/work/checkpoints/spec-5-5.3-fix.md
+- Mocks/blocked: none; one legitimate require_escalated approval used for the test run because the sandbox blocks sockets (TestClient tests need loopback listen; pre-existing tests unaffected)
+- Signals: none
+- Pre-existing dirt (not mine, untouched): M lite/app/server/pages.py, M lite/logs/spec5_log.md, ?? lite/app/server/templates/map.html, ?? lite/tests/test_map.py (attempt-1 work)
+- Status: PROVISIONAL
+
+Verdict (joint 5.3/5.4): ACCEPTED (attempt 1 built the surface;
+attempt 2 resolved the flagged spec-vs-test conflict).
+Gates: (1) diff clean — pages.py /map route + map.html + test_map
++ rewritten wording test + orchestrator log. (2) tests run
+in-session (escalated path for sockets): 167 passed. (3)
+integrity: 4 map tests (login gate, wiring incl. exact compare
+line + disclaimers + toggle + fallback, payload-driven dots with
+rejected/deleted excluded, other-user popup photo); rewrite is a
+general pinned-CDN allowlist identified by content, still
+forbidding unknown scripts. (4) honesty: no mocks beyond
+sanctioned stub; no automated scene-location score anywhere;
+pixel rendering honestly not eyeballed (no browser in env).
+(5) both entries complete. Ruling logged: test_wording.py
+unlocked for this brief only (§5.2 + Lite §6 rewrite rule).
+Commit: (recorded after commit)
+
+# Spec status: 3/5 ACCEPTED (5.3+5.4 jointly); open: 5.5
 
 <!-- END-OF-LOG -->

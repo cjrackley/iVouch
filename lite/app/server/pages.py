@@ -13,6 +13,7 @@ objective 3.2: ``POST /upload`` (browser upload flow),
 ``GET /reports/{id}`` (owner result, HTML for browsers),
 ``GET /shared/{id}`` (community page, HTML for browsers);
 ``GET /shared/photos/{id}`` (photo bytes for cookie sessions);
+``GET /map`` (community map, HTML for browsers);
 ``GET /api/photos/{id}`` (cookie-aware bridge, delegates without one);
 ``GET /static/style.css``.
 
@@ -805,6 +806,56 @@ def photo_cookie_bridge(request: Request, report_id: int):
     if account is None:
         account = api_module.get_current_account(request)
     return api_module.get_photo(report_id, request, account)
+
+
+@pages_router.get("/map")
+def map_page(request: Request):
+    """Community map: one dot per accepted report (HTML for browsers).
+
+    Login required: anonymous callers are redirected to ``/login``
+    (an ``<img>``-style anonymous fetch cannot use this page). Dots
+    themselves are rendered in-page by fetching the existing spec-5.2
+    ``GET /api/incidents`` endpoint (unchanged); the photo in each
+    popup uses the cookie-session ``/shared/photos/{id}`` route, and
+    the popup links to ``GET /shared/{id}``. The server also renders
+    the same report links into the ``map_fallback`` container, so a
+    browser whose map library or tiles fail to load still shows the
+    reports list instead of a blank map. No scene-vs-location
+    judgement is computed here: the popup only asks the viewer to
+    compare visually.
+    """
+    account = _account_for_session(request)
+    if account is None:
+        return _redirect("/login")
+    from lite.app.server import api as api_module
+
+    try:
+        collection = api_module.list_incidents(request, account)
+    except HTTPException:
+        collection = {"features": []}
+    features = (
+        collection.get("features", [])
+        if isinstance(collection, dict)
+        else []
+    )
+    items = []
+    for feature in features:
+        props = (
+            feature.get("properties", {})
+            if isinstance(feature, dict)
+            else {}
+        )
+        report_id = props.get("report_id") if isinstance(props, dict) else None
+        if report_id is None:
+            continue
+        items.append({"report_id": report_id})
+    return _render(
+        "map.html",
+        {
+            "title": "Map",
+            "reports": items,
+        },
+    )
 
 
 def _review_denied() -> Response:
