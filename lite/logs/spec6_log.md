@@ -303,4 +303,24 @@ Commit: 6.10 recorded below.
 # Spec status: 9/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7, 6.8, 6.9, 6.10); open: 6.2
 - Next: 6.2 orphan audit last (page-route reachability + empty states + deep links).
 
+### Task lite-spec-6 6.2 tests, attempt 1
+- Objective: 6.2 Endpoint coverage (orphan audit tests), tests only, no implementation code
+- Touched: none (no existing files edited)
+- Created: lite/tests/test_orphans.py (11 tests); lite/work/checkpoints/spec-6-6.2-tests.md, spec-6-6.2-tests-entry.md (working files)
+- Tests: python -m pytest lite/tests/test_orphans.py -q -- 6 passed, 5 failed; python -m pytest lite/tests -q -- 250 passed, same 5 failed (all 244 prior tests green, no regressions)
+- Test integrity: no locked-path edits; no existing tests touched; FanStub CLIP seam + page-form CSRF login pattern reused from sibling suites; full-strength asserts, no skips, no weakening; two self-authored harness bugs fixed in the new file (stub isinstance typo, prefix-normalization slicing)
+- Dependencies: none added
+- Resources: within 60-min budget; stubbed CLIP encoder only; no network; one require_escalated sandbox approval for TestClient loopback sockets (WinError 10013, same environmental block as prior spec-6 builders)
+- Checkpoint: lite/work/checkpoints/spec-6-6.2-tests.md (red-test list for the implement brief, no resume needed)
+- Mocks/blocked: none; red tests are genuine app gaps, each verified by probe/template read: orphans /verify + /audit (no inbound page links), no GET / route (404; message back-links target it), empty /reports has only an /upload link, empty /review has no link at all
+- Signals: none (red is the specified TDD input to the 6.2 implement brief, not a scope or env block)
+- Status: PROVISIONAL
+
+Verdict (6.2 tests): TESTS ACCEPTED (native, inherit; objective 6.2 stays open pending implement).
+Gates: (1) diff clean - one new test file only, no existing-file edits, no secrets, small. (2) ran in-session: test_orphans.py 6 passed / 5 failed, exactly the checkpoint red list (orphans /verify+/audit, no GET /, / resolves 404, empty /reports and /review lack /map button); full suite 250 passed with the same 5 failed, all 244 prior green. (3) integrity: full-strength asserts, no skips/weakening; FanStub + CSRF-login pattern matches sibling suites. (4) honesty: red tests verified as genuine app gaps by probe/template read, not harness bugs. (5) entry complete. test_orphans.py is now locked for the implement brief.
+Commit: 6.2 tests recorded below.
+
+# Spec status: 9/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7, 6.8, 6.9, 6.10); open: 6.2 (tests accepted, implement pending)
+- Roster: 6.2 implement dispatched next (native, inherit).
+
 <!-- END-OF-LOG -->
