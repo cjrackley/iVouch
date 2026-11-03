@@ -372,4 +372,10 @@ Commit: 6.2 recorded below.
 - Definition of done: every criterion recorded passing here; suite green; wording green; manual checks logged; approval items either built or recorded not-started above.
 - Lite status: specs 0-6 ALL ACCEPTED. Demo path serves GET / (map home / redirect) + all pages; no DEMO.md change needed for spec 6.
 
+## Post-completion fix (demo styling 500)
+- Report: demo showed no spec-6 styling. Cause: `GET /static/style.css` raised `TypeError: Path.read_bytes() got an unexpected keyword argument 'encoding'` (pages.py:237) — the stylesheet 500'd on every page, so no CSS ever applied. Grep tests check file content, not serving; the static route is exempt from the orphan crawl, so gates missed it. Honestly an acceptance miss.
+- Fix (1 line, pages.py:237): `path.read_bytes(encoding="utf-8")` -> `path.read_bytes()`. Only occurrence in lite/app (verified by search).
+- Verified in-session: `/static/style.css` 200, 7752 bytes, text/css, carries variables/tab-bar rules; `/login` 200 with stylesheet link + tab-bar + phone-shell markup. Full suite 255 passed, 0 failed.
+- Commit: post-completion fix recorded below.
+
 <!-- END-OF-LOG -->

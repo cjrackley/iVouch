@@ -234,7 +234,7 @@ def style_css():
     if not path.is_file():
         return Response(status_code=404)
     return Response(
-        path.read_bytes(encoding="utf-8"), media_type="text/css"
+        path.read_bytes(), media_type="text/css"
     )
 
 
