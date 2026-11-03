@@ -281,4 +281,26 @@ Commit: 6.9 recorded below.
 # Spec status: 8/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7, 6.8, 6.9); open: 6.10, 6.2
 - Next: 6.10 navigation final state (tabs exist; no search/bell).
 
+### Task 6.10 Navigation final state, attempt 1
+- Objective: lite spec-6 objective 6.10 Navigation (approved scope only: no search/bell)
+- Dispatch: native (model/effort inherited; not stated by builder)
+- Touched: lite/app/server/templates/base.html (edited: tab-create labels "Create" -> "Create +" in sidebar + tab bar, order/targets unchanged), lite/app/server/templates/feed.html (edited: added pure HTML/CSS Create FAB linking to /upload + .feed-fab style using CSS vars only, no scripts)
+- Created: lite/tests/test_navigation.py (7 tests)
+- Tests: python -m pytest lite/tests -q -- passed (244 passed, includes 7 new; locked suites test_design_system, test_wording, test_feed, test_map, test_map_restyle green unchanged)
+- Test integrity: no locked-path edits; no existing tests touched; map.html untouched (one inline script with markers preserved); feed.html still zero scripts; no hex literals or certainty words added (vars only)
+- Dependencies: none added
+- Resources: within 60 min budget; one require_escalated sandbox approval used (loopback sockets blocked by default sandbox: WinError 10013 on TestClient socket listen; suite passes only with escalation)
+- Checkpoint: lite/work/checkpoints/spec-6-6.10.md (n/a, short task)
+- Mocks/blocked: none; FanStub encoder seam reused from 6.7 suite pattern
+- Decisions: tab labels set to exactly Feed/Map/Create +/Saved/Profile per spec 6.10; active-tab styling kept as-is (.tab-item.is-active class in locked style.css); header gear already on every shell page, unchanged
+- Signals: none
+- Status: PROVISIONAL
+
+Verdict (6.10): ACCEPTED (native, inherit).
+Gates: (1) diff clean - base.html (2 label lines) + feed.html (FAB link + .feed-fab block, vars only) + new test_navigation.py (7 tests) + orchestrator log; style.css untouched; no secrets/weights; tiny diff. (2) 7 new passed, full 244 passed run in-session (escalated socket approval, legitimate per lite README). (3) integrity: no existing-test edits; FanStub seam is the standard allowed pattern; new asserts strict (exact tab order/labels, FAB presence, gear, no search/bell, target resolution, anonymous redirect). (4) honesty: no accuracy or browser claims; manual mobile/desktop check by code inspection - sidebar hidden on mobile / tab bar collapses to sidebar at min-width 768px, both navs carry the same 5 tabs, header gear on shell pages, FAB on map (map_create) and feed (feed-fab), no scripts added. (5) entry complete.
+Commit: 6.10 recorded below.
+
+# Spec status: 9/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7, 6.8, 6.9, 6.10); open: 6.2
+- Next: 6.2 orphan audit last (page-route reachability + empty states + deep links).
+
 <!-- END-OF-LOG -->
