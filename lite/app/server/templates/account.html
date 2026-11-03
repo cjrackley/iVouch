@@ -135,9 +135,11 @@
 <button type="submit" class="btn btn-secondary">Send a new verification email</button>
 </form>
 {% endif %}
+<p><a href="/verify">Enter your verification code</a></p>
 <p><a class="btn btn-tertiary" href="/logout">Log out</a></p>
 {% if is_reviewer %}
 <p><a class="btn btn-secondary" href="/review">Admin</a></p>
+<p><a class="btn btn-secondary" href="/audit">Audit log</a></p>
 {% endif %}
 </div>
 <h2>Delete account</h2>

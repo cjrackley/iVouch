@@ -192,6 +192,15 @@ def create_app(
     # Pages first: the HTML GET /account (browser navigation) is reached
     # before the JSON GET /account below; non-HTML clients are delegated
     # back to the spec-2 implementation inside the page handler.
+    # Spec 6.2: ``GET /`` serves the map home / redirects (see
+    # pages.root_redirect). It is registered on the app rather than
+    # pages_router because the orphan audit pins the router's own
+    # GET route list (every page route except ``/``) while requiring
+    # this entry point to resolve.
+    app.add_api_route(
+        "/", pages_module.root_redirect, methods=["GET"],
+        include_in_schema=False,
+    )
     app.include_router(pages_module.pages_router)
     app.include_router(auth_router)
     app.include_router(upload_router)

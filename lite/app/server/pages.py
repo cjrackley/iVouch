@@ -1425,6 +1425,29 @@ def photo_cookie_bridge(request: Request, report_id: int):
     return api_module.get_photo(report_id, request, account)
 
 
+def root_redirect(request: Request):
+    """Serve ``GET /`` (spec 6.2, no orphan entry points).
+
+    The web home is the map: a logged-in browser (cookie session
+    plus HTML accept) gets the map page here with a 200, exactly as
+    ``GET /map`` renders it. Every other caller is redirected:
+    anonymous browsers to ``/login`` like the other gated pages,
+    and non-browser callers (plus logged-in API-style callers) to
+    ``/map``. Registered on the app in ``create_app``, not on
+    ``pages_router``, because the orphan audit pins the router's
+    own GET route list (every page route except ``/``) while
+    requiring this entry point: the crawl reaches ``/`` (via the
+    message pages' Home links) and the suite asserts a 200 for a
+    logged-in browser, 303 to ``/login`` for an anonymous browser,
+    and 303 to ``/map`` otherwise.
+    """
+    if _account_for_session(request) is None:
+        return _redirect("/login") if _wants_html(request) else _redirect("/map")
+    if _wants_html(request):
+        return map_page(request)
+    return _redirect("/map")
+
+
 @pages_router.get("/map")
 def map_page(request: Request):
     """Community map: one dot per accepted report (HTML for browsers).

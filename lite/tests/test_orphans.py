@@ -434,13 +434,31 @@ def test_no_page_links_to_missing_route(monkeypatch, tmp_path):
     assert targets, "crawl collected no same-origin href targets"
     for target in targets:
         pattern = _normalize_href(target)
-        owner_resp = owner.get(target, headers=HTML)
-        reviewer_resp = reviewer.get(target, headers=HTML)
+        if pattern == "/logout":
+            # Probed in isolation after the loop: GET /logout clears
+            # the session cookie, so it must not run on the shared
+            # owner/reviewer clients mid-loop.
+            continue
+        owner_resp = owner.get(
+            target, headers=HTML, follow_redirects=False
+        )
+        reviewer_resp = reviewer.get(
+            target, headers=HTML, follow_redirects=False
+        )
         anon_resp = anon.get(
             target, headers=HTML, follow_redirects=False
         )
         assert owner_resp.status_code != 404, ("owner", target)
-        assert reviewer_resp.status_code != 404, ("reviewer", target)
+        if pattern == "/reports/{id}":
+            # Owner-private page of another account: non-owner access is
+            # blocked, 403 or 404 allowed per locked spec-2 contract
+            # (test_retrieval.py:347-348).
+            assert reviewer_resp.status_code in (403, 404), (
+                "reviewer",
+                target,
+            )
+        else:
+            assert reviewer_resp.status_code != 404, ("reviewer", target)
         assert anon_resp.status_code != 404, ("anonymous", target)
         if pattern in REVIEWER_GATED:
             assert reviewer_resp.status_code == 200, (
@@ -454,9 +472,6 @@ def test_no_page_links_to_missing_route(monkeypatch, tmp_path):
         elif pattern in ("/login", "/signup"):
             assert owner_resp.status_code == 303, (target, owner_resp.text)
             assert anon_resp.status_code == 200, (target, anon_resp.text)
-        elif pattern == "/logout":
-            assert owner_resp.status_code == 303, target
-            assert owner_resp.headers["location"] == "/login", target
         elif pattern == "/verify":
             assert owner_resp.status_code == 200, target
             assert anon_resp.status_code == 200, target
@@ -471,6 +486,20 @@ def test_no_page_links_to_missing_route(monkeypatch, tmp_path):
                 anon_resp.text,
             )
             assert anon_resp.headers["location"] == "/login", target
+    # Isolated /logout probe (same assertions as before, unchanged):
+    # GET /logout clears the session cookie, so a throwaway logged-in
+    # client is used and the shared loop clients stay logged in.
+    logout_probe = TestClient(app)
+    _page_login(logout_probe, OWNER_EMAIL)
+    logout_resp = logout_probe.get(
+        "/logout", headers=HTML, follow_redirects=False
+    )
+    assert logout_resp.status_code == 303, "/logout"
+    assert logout_resp.headers["location"] == "/login", "/logout"
+    anon_logout_resp = anon.get(
+        "/logout", headers=HTML, follow_redirects=False
+    )
+    assert anon_logout_resp.status_code != 404, ("anonymous", "/logout")
 
 
 def _main_after_marker(page_text: str, marker: str) -> str:
