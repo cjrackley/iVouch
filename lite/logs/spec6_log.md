@@ -362,4 +362,14 @@ Commit: 6.2 recorded below.
 
 # Spec status: 10/10 ACCEPTED (6.1, 6.6, 6.3, 6.4, 6.5, 6.7, 6.8, 6.9, 6.10, 6.2); open: none
 
+# Spec completion report — Lite spec 6 (native app polish + endpoint coverage)
+- Objectives (10/10 ACCEPTED): 6.1 design system (a8de521) 6.6 saved places (e84a246) 6.3 map restyle (af6c485) 6.4 detail backend+restyle (d8f9831) 6.5 upload restyle+title/category (69967bd) 6.7 feed (07464e4) 6.8 account (4c8244f) 6.9 login/signup (dc2c703) 6.10 navigation (299e568) 6.2 tests (4beb90e) + implement/test-fix (7cdaa13).
+- Files: style.css variables + base.html shell; map/detail/upload/account/login/signup/saved/feed/report/reports/review/review_detail/audit/verify/shared templates; pages.py (saves, vouches, comments, title/category, feed, root_redirect) + api.py (1 app-level / registration); db.py (saves, vouches, comments, title/category columns via recreate path); 10 new test files (design_system, saved, map_restyle, detail, upload_restyle, feed, account_restyle, auth_restyle, navigation, orphans).
+- Tests: python -m pytest lite/tests -q -> 255 passed, 0 failed, run in-session (escalated socket approval, legitimate per lite README). Spec-3 wording grep suite green. Manual mobile/desktop checks logged by code inspection (responsive shell media query, tab bar + sidebar parity, FABs, button states, centered onboarding).
+- User decisions honoured: Saved+Feed pages and Vouch/Save/Share/comments/title/category interactions approved and built; other-user profiles, search, notifications, OAuth buttons, forgot-password, Edit-Profile/name/bio/avatar/Following/Activity NOT approved and not built (no dead links to them; feed shows For You | Nearby only).
+- Mocks/open inputs: none for spec 6 (no human inputs; FanStub CLIP seam in tests only; OAuth creds not needed — buttons not built).
+- Retries: one orchestrator-caught brief error (6.7 base.html allowed+locked, cancelled pre-work, zero attempts consumed); one authorized test-fix cycle for 6.2 test_3 (3 locked-test defects proven, fixed without weakening). No REJECTED objectives. Scratch artifacts removed by orchestrator.
+- Definition of done: every criterion recorded passing here; suite green; wording green; manual checks logged; approval items either built or recorded not-started above.
+- Lite status: specs 0-6 ALL ACCEPTED. Demo path serves GET / (map home / redirect) + all pages; no DEMO.md change needed for spec 6.
+
 <!-- END-OF-LOG -->
