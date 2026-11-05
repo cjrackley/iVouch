@@ -14,20 +14,20 @@
 <dt>Assessment</dt>
 <dd>{{ report.verdict }}</dd>
 <dt>Confidence</dt>
-<dd>{{ report.confidence }}</dd>
+<dd>{{ confidence_pct }}</dd>
 <dt>Submitted</dt>
 <dd>{{ report.created_at }}</dd>
 </dl>
 <h2>Incident probabilities</h2>
 <ul>
-{% for name, prob in report.incident_probs.items() %}
-<li>{{ name }}: {{ prob }}</li>
+{% for name, pct in incident_pct.items() %}
+<li>{{ name }}: {{ pct }}</li>
 {% endfor %}
 </ul>
 <h2>Severity probabilities</h2>
 <ul>
-{% for name, prob in report.severity_probs.items() %}
-<li>{{ name }}: {{ prob }}</li>
+{% for name, pct in severity_pct.items() %}
+<li>{{ name }}: {{ pct }}</li>
 {% endfor %}
 </ul>
 <h2>Provenance flags</h2>

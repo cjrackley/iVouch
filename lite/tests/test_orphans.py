@@ -9,14 +9,16 @@ Covers the 6.2 acceptance criteria:
 
 1. Every GET page route from the routers (``/`` redirect, ``/map``,
    ``/shared/{id}``, ``/reports/{id}``, ``/upload``, ``/reports``,
-   ``/account``, ``/login``, ``/signup``, ``/logout``, ``/verify``,
-   ``/review``, ``/review/{id}``, ``/audit``, ``/saved``, ``/feed``)
-   appears as a link target on at least one page a logged-in user can
-   reach. Zero orphan routes. Tab/header coverage from
-   ``test_navigation.py`` is reused by reference, not duplicated --
-   the crawl below focuses on the non-shell entry points (View
-   Details, own-reports cards, FABs, My Pins tab, Admin link,
-   empty-state buttons, verify notice).
+   ``/account``, ``/logout``, ``/review``, ``/review/{id}``,
+   ``/audit``, ``/saved``, ``/feed``) appears as a link target on at
+   least one page a logged-in user can reach. Zero orphan routes.
+   ``/login``, ``/signup``, and ``/verify`` are direct-entry routes
+   (redirect target, header cross-link, mailed token link): they are
+   audited for anonymous reachability and cross-linking instead.
+   Tab/header coverage from ``test_navigation.py`` is reused by
+   reference, not duplicated -- the crawl below focuses on the
+   non-shell entry points (View Details, own-reports cards, FABs,
+   My Pins tab, Admin link, empty-state buttons, verify notice).
 2. The Admin link (review/audit) appears only for reviewer accounts.
 3. No page links to a route that does not exist: every collected href
    target resolves without a 404 (200 for a suitably logged-in user,
@@ -62,6 +64,13 @@ MAIN_RE = re.compile(
 # GET page routes that must each be reachable from a rendered link.
 # Derived from the routers (``pages_router`` GET routes minus the
 # exempt static/photo/JSON-API paths) plus ``/``, which redirects.
+#
+# Direct-entry routes (``DIRECT_ENTRY_ROUTES``) are exempt from the
+# logged-in inbound-link rule: the session-aware header (spec 7.4)
+# offers Log in/Sign up only to anonymous visitors, and the verify
+# entry hides once verified (spec 7.5). They are audited separately
+# below (anonymous cross-links plus direct reachability).
+DIRECT_ENTRY_ROUTES = ("/login", "/signup", "/verify")
 EXPECTED_PAGE_ROUTES = (
     "/",
     "/map",
@@ -330,7 +339,9 @@ def _rendered_pages(owner, reviewer, report_id):
 
 def test_every_page_route_is_linked(monkeypatch, tmp_path):
     """Zero orphan routes: each GET page route is a link target."""
-    owner, reviewer, _, _, report_id = _setup(monkeypatch, tmp_path)
+    owner, reviewer, app, _, report_id = _setup(
+        monkeypatch, tmp_path
+    )
     owner_routes = [
         r.replace("PLACEHOLDER", str(report_id)) for r in OWNER_PAGES
     ]
@@ -341,9 +352,41 @@ def test_every_page_route_is_linked(monkeypatch, tmp_path):
         [(owner, owner_routes), (reviewer, reviewer_routes)]
     )
     missing = [
-        route for route in EXPECTED_PAGE_ROUTES if route not in patterns
+        route
+        for route in EXPECTED_PAGE_ROUTES
+        if route not in patterns and route not in DIRECT_ENTRY_ROUTES
     ]
     assert not missing, f"orphan page routes with no inbound link: {missing}"
+    from fastapi.testclient import TestClient
+
+    anon = TestClient(app)
+    _, anon_patterns = _crawl_hrefs(
+        [(anon, ["/login", "/signup", "/verify"])]
+    )
+    # Anonymous entry points stay mutually linked for the visitors
+    # who need them (session-aware header cross-links).
+    for route in ("/login", "/signup"):
+        assert route in anon_patterns, (
+            f"anonymous entry point with no inbound link: {route}"
+        )
+    for route in DIRECT_ENTRY_ROUTES:
+        direct = anon.get(route, headers=HTML)
+        assert direct.status_code == 200, (route, direct.status_code)
+    # The verify entry is mailed out of band; its one in-app inbound
+    # link is the unverified account page (hidden once verified).
+    fresh = TestClient(app)
+    assert fresh.post(
+        "/auth/register",
+        json={
+            "email": "orphan-fresh@example.com",
+            "password": PASSWORD,
+            "date_of_birth": ADULT_DOB,
+        },
+    ).status_code == 200
+    _page_login(fresh, "orphan-fresh@example.com")
+    unverified = fresh.get("/account", headers=HTML)
+    assert unverified.status_code == 200, unverified.text
+    assert 'href="/verify"' in unverified.text
 
 
 def test_router_get_routes_match_expected_set(monkeypatch, tmp_path):

@@ -708,11 +708,12 @@ def test_share_control_present(monkeypatch, tmp_path):
     _page_login(http, OTHER_EMAIL)
     page = http.get(f"/shared/{report_id}", headers=HTML)
     assert page.status_code == 200, page.text
-    # Polish hook plus a no-JS fallback link showing the URL text.
+    # Polish hook plus a no-JS fallback link labeled Share (spec 7.2:
+    # the label is Share, never the raw /shared/N URL; href unchanged).
     assert "navigator.share" in page.text
     assert 'id="share_link"' in page.text
     assert f'href="/shared/{report_id}"' in page.text
-    assert f">/shared/{report_id}</a>" in page.text
+    assert ">Share</a>" in page.text
     # At most one inline script block on the page (plus the single
     # allowlisted map-library src).
     opens = re.findall(r"<script\b[^>]*>", page.text)

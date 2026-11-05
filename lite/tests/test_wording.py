@@ -83,6 +83,10 @@ def _report_context(label: str) -> dict:
         "report": report,
         "top_incident": "fire",
         "top_incident_prob": 0.7,
+        "top_incident_pct": "70.0%",
+        "confidence_pct": "42.0%",
+        "incident_pct": {"fire": "70.0%", "flood": "20.0%"},
+        "severity_pct": {"moderate": "60.0%", "mild": "40.0%"},
     }
 
 

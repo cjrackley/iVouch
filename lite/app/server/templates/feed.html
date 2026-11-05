@@ -38,6 +38,7 @@
   position: fixed;
   right: var(--safe-area-x);
   bottom: calc(var(--tab-bar-h) + var(--safe-area-x));
+  min-height: 44px;
   box-shadow: var(--shadow-fab);
   z-index: 5;
 }
@@ -84,7 +85,7 @@
 {% endfor %}
 </ul>
 {% else %}
-<p>No vouches to show yet</p>
+<p class="empty-state">No vouches to show yet</p>
 <a class="btn btn-primary" href="/map">Explore Map</a>
 {% endif %}
 <a class="btn btn-primary feed-fab" href="/upload" aria-label="Create new vouch">Create +</a>

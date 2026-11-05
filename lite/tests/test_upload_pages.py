@@ -299,9 +299,10 @@ def test_result_card_fields_and_needs_review_banner(
         expected["incident_probs"], key=expected["incident_probs"].get
     )
     assert top_incident in body
-    assert str(expected["incident_probs"][top_incident]) in body
+    # Spec 7.1: the result card renders one-decimal percent strings, not raw floats.
+    assert f"{expected['incident_probs'][top_incident] * 100:.1f}%" in body
     assert expected["top_severity"] in body
-    assert str(expected["confidence"]) in body
+    assert f"{expected['confidence'] * 100:.1f}%" in body
     # Authenticity label with every reason listed.
     assert expected["verdict"] in body
     for reason in expected["reasons"]:

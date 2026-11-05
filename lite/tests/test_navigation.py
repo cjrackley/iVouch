@@ -222,3 +222,101 @@ def test_anonymous_tab_targets_redirect_to_login(monkeypatch, tmp_path):
         page = http.get(target, headers=HTML, follow_redirects=False)
         assert page.status_code == 303, (target, page.text)
         assert page.headers["location"] == "/login", target
+
+
+HEADER_RE = re.compile(
+    r'<header class="top-bar">(.*?)</header>', re.DOTALL
+)
+TAG_RE = re.compile(r"<a\b[^>]*>", re.DOTALL)
+
+
+def _header(body):
+    """The top-bar header block (header links live here, not page wide)."""
+    match = HEADER_RE.search(body)
+    assert match, "no top-bar header rendered"
+    return match.group(1)
+
+
+def _nav_inner(body, nav_class):
+    """Inner HTML of one named shell nav block."""
+    for kind, inner in NAV_RE.findall(body):
+        if kind == nav_class:
+            return inner
+    raise AssertionError(f"no <nav class={nav_class!r}> block rendered")
+
+
+def _active_hrefs(nav_inner):
+    """Hrefs of the tabs carrying is-active in one nav block."""
+    active = []
+    for tag in TAG_RE.findall(nav_inner):
+        cls = re.search(r'class="([^"]*)"', tag)
+        href = re.search(r'href="([^"]+)"', tag)
+        if (
+            cls is not None
+            and href is not None
+            and "is-active" in cls.group(1).split()
+        ):
+            active.append(href.group(1))
+    return active
+
+
+def test_exactly_one_active_tab_matching_page(monkeypatch, tmp_path):
+    http, _ = _register_verify(monkeypatch, tmp_path)
+    _page_login(http)
+    for route in SHELL_PAGES:
+        page = http.get(route, headers=HTML)
+        assert page.status_code == 200, (route, page.text)
+        for nav_class in ("tab-bar", "sidebar"):
+            inner = _nav_inner(page.text, nav_class)
+            assert _active_hrefs(inner) == [route], (
+                route, nav_class,
+            )
+
+
+def test_anonymous_header_login_signup_only(monkeypatch, tmp_path):
+    http, _ = _make_client(monkeypatch, tmp_path)
+    for route in ("/login", "/signup"):
+        page = http.get(route, headers=HTML)
+        assert page.status_code == 200, (route, page.text)
+        header = _header(page.text)
+        assert 'href="/login"' in header, route
+        assert 'href="/signup"' in header, route
+        assert 'href="/logout"' not in header, route
+        assert "top-bar-gear" not in header, route
+        assert "Admin" not in header, route
+
+
+def test_owner_header_gear_logout_without_signup(monkeypatch, tmp_path):
+    http, _ = _register_verify(monkeypatch, tmp_path)
+    _page_login(http)
+    for route in SHELL_PAGES:
+        page = http.get(route, headers=HTML)
+        assert page.status_code == 200, (route, page.text)
+        header = _header(page.text)
+        assert 'href="/logout"' in header, route
+        assert "top-bar-gear" in header, route
+        assert 'href="/login"' not in header, route
+        assert 'href="/signup"' not in header, route
+        assert "Admin" not in header, route
+        assert "Sign up" not in page.text, route
+
+
+def test_reviewer_header_shows_admin(monkeypatch, tmp_path):
+    from lite.app.server.db import connect, make_reviewer
+
+    http, dirs = _register_verify(monkeypatch, tmp_path)
+    _page_login(http)
+    conn = connect(str(dirs["db"]))
+    try:
+        make_reviewer(conn, EMAIL)
+    finally:
+        conn.close()
+    for route in SHELL_PAGES:
+        page = http.get(route, headers=HTML)
+        assert page.status_code == 200, (route, page.text)
+        header = _header(page.text)
+        assert 'href="/review"' in header, route
+        assert "Admin" in header, route
+        assert 'href="/logout"' in header, route
+        assert "top-bar-gear" in header, route
+        assert 'href="/signup"' not in header, route

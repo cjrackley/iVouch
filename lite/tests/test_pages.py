@@ -354,20 +354,82 @@ def test_verify_landing_posts_to_verify_api(client):
     ).status_code == 200
     token = _mail_tokens(dirs["mail"])[0]
 
-    # No query -> token entry form, no result yet.
+    # No query -> token-only entry form, no result yet.
     blank = http.get("/verify", headers=HTML)
     assert blank.status_code == 200
     assert 'name="token"' in blank.text
+    assert 'name="email"' not in blank.text
 
-    # Valid token query -> verified result.
+    # Valid token query (no email submitted) -> verified result.
     good = http.get(f"/verify?token={token}", headers=HTML)
     assert good.status_code == 200, good.text
     assert "Email verified." in good.text
+    # Success links onward to login instead of dead-ending.
+    assert 'href="/login"' in good.text
+    assert "Log in" in good.text
 
     # Bad token -> error result.
     bad = http.get("/verify?token=garbage", headers=HTML)
     assert bad.status_code == 200, bad.text
     assert "Invalid or expired verification token." in bad.text
+    assert 'name="token"' in bad.text
+
+    # Optional email query param still accepted (mailed-link compat).
+    seen = set(_mail_tokens(dirs["mail"]))
+    assert http.post(
+        "/auth/register",
+        json={
+            "email": "vv2@example.com",
+            "password": PASSWORD,
+            "date_of_birth": ADULT_DOB,
+        },
+    ).status_code == 200
+    fresh = [t for t in _mail_tokens(dirs["mail"]) if t not in seen]
+    assert len(fresh) == 1
+    token2 = fresh[0]
+    compat = http.get(
+        f"/verify?token={token2}&email=vv2@example.com", headers=HTML
+    )
+    assert compat.status_code == 200, compat.text
+    assert "Email verified." in compat.text
+    assert 'href="/login"' in compat.text
+
+
+def test_verify_entry_only_for_unverified_accounts(client):
+    http, dirs = client
+    assert http.post(
+        "/auth/register",
+        json={
+            "email": "setting@example.com",
+            "password": PASSWORD,
+            "date_of_birth": ADULT_DOB,
+        },
+    ).status_code == 200
+    http.post("/login", data=_login_form(http, "setting@example.com"))
+
+    pending = http.get("/account", headers=HTML)
+    assert pending.status_code == 200, pending.text
+    assert "Email status: not verified." in pending.text
+    assert 'href="/verify"' in pending.text
+    assert "/verify-resend" in pending.text
+
+    token = _mail_tokens(dirs["mail"])[0]
+    assert http.post(
+        "/auth/verify-email", json={"token": token}
+    ).status_code == 200
+
+    done = http.get("/account", headers=HTML)
+    assert done.status_code == 200, done.text
+    assert "Email status: verified." in done.text
+    assert 'href="/verify"' not in done.text
+    assert "/verify-resend" not in done.text
+    assert "Enter your verification code" not in done.text
+
+    # Verified upload page carries no verify entry either.
+    upload = http.get("/upload", headers=HTML)
+    assert upload.status_code == 200, upload.text
+    assert "verify your email" not in upload.text
+    assert 'href="/verify"' not in upload.text
 
 
 def test_logout_clears_session_cookie(client):

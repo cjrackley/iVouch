@@ -5,10 +5,13 @@ and ``lite/app/server/templates/base.html`` (plus a Jinja render of
 the shell, no app, no network): every spec colour, radius, and shadow
 is a CSS variable; templates use the variables, not literals; font
 smoothing applies globally; no page uses Times New Roman or ``#000``
-text; every button is 44px+ tall and defines every required state;
-the layout shell provides the mobile tab bar (Map, Create, Saved,
-Profile), the desktop sidebar, the top bar with gear link, and 16px
-SafeArea padding as pure HTML+CSS.
+text; buttons use the spec-7.6 compact scale (40px base, 44px+ only
+on the primary CTA, FABs, and Create tab; nothing below 24px) and
+define every required state; the gradient appears only on the
+primary CTA and the Create tab; the layout shell provides the
+mobile tab bar (Map, Create, Saved, Profile), the desktop sidebar,
+the top bar with gear link, and 16px SafeArea padding as pure
+HTML+CSS.
 """
 
 from __future__ import annotations
@@ -77,6 +80,25 @@ GRADIENT_VALUE = "linear-gradient(135deg, #0F6BFF 0%, #00C98D 100%)"
 # Hex colour literal, ignoring HTML entities such as &#9881;.
 HEX_RE = re.compile(r"(?<!&)#[0-9A-Fa-f]{3,8}\b")
 
+# Functional colour literal (spec 7.6 extension: no rgb()/hsl() either).
+FUNC_COLOUR_RE = re.compile(r"(?<![A-Za-z-])(?:rgba?|hsla?)\s*\(", re.IGNORECASE)
+
+# Selectors allowed to carry a 44px+ min-height (spec 7.6: primary
+# CTA, FABs, Create tab, and the full-width auth submit which is a
+# 48px primary CTA).
+APPROVED_TALL_RE = re.compile(
+    r"\.btn-primary|\.tab-create|#map_create|\.feed-fab|\.auth-submit"
+)
+
+# Selectors treated as button-like for the compact-scale audit.
+BUTTON_LIKE_RE = re.compile(
+    r"btn|button|tab|pill|fab|create|submit", re.IGNORECASE
+)
+
+# Selectors allowed to reference the gradient (spec 7.6: primary CTA
+# and Create tab only; the :root definition itself).
+APPROVED_GRADIENT_RE = re.compile(r":root|\.btn-primary|\.tab-create")
+
 FORBIDDEN_WORDS = ("accurate", "verified-result", "proves", "guarantees")
 
 
@@ -120,6 +142,47 @@ def test_templates_use_variables_not_literals():
             f"{path.name} carries a literal colour instead of a "
             f"CSS variable: {HEX_RE.search(source).group(0)!r}"
         )
+        assert not FUNC_COLOUR_RE.search(source), (
+            f"{path.name} carries a functional colour instead of a "
+            f"CSS variable: {FUNC_COLOUR_RE.search(source).group(0)!r}"
+        )
+
+
+def _style_sources() -> list[tuple[str, str]]:
+    """Global stylesheet plus every template ``<style>`` block."""
+    sources = [("style.css", _css())]
+    for path in sorted(TEMPLATES_DIR.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(
+            r"<style>(.*?)</style>", text, re.DOTALL | re.IGNORECASE
+        ):
+            sources.append((f"{path.name}<style>", match.group(1)))
+    return sources
+
+
+def _rule_blocks(css_text: str) -> list[tuple[str, str]]:
+    """Split CSS into (selector, body) pairs, ignoring comments."""
+    cleaned = re.sub(r"/\*.*?\*/", "", css_text, flags=re.DOTALL)
+    return re.findall(r"([^{}]+)\{([^{}]*)\}", cleaned)
+
+
+def test_stylesheet_colours_radii_shadows_stay_variables():
+    css = _css()
+    match = re.search(r":root\s*\{(.*?)\}", css, re.DOTALL)
+    assert match is not None
+    rest = css[: match.start()] + css[match.end():]
+    assert not HEX_RE.search(rest), (
+        "style.css carries a hex literal outside :root: "
+        f"{HEX_RE.search(rest).group(0)!r}"
+    )
+    assert not FUNC_COLOUR_RE.search(rest), (
+        "style.css carries a functional colour outside :root: "
+        f"{FUNC_COLOUR_RE.search(rest).group(0)!r}"
+    )
+    assert "linear-gradient(" not in rest, (
+        "style.css builds a gradient outside the --gradient-primary "
+        "variable definition"
+    )
 
 
 def test_base_shell_loads_stylesheet_and_uses_classes():
@@ -172,8 +235,8 @@ def test_no_certainty_words_in_design_files():
 def test_buttons_min_height_and_all_states():
     css = _css()
     assert re.search(
-        r"\.btn\s*\{[^}]*min-height:\s*44px", css, re.DOTALL
-    ), ".btn base lacks min-height: 44px"
+        r"\.btn\s*\{[^}]*min-height:\s*40px", css, re.DOTALL
+    ), ".btn base lacks the compact min-height: 40px"
     assert re.search(
         r"\.btn:hover\s*\{[^}]*brightness\(0\.95\)", css, re.DOTALL
     ), ".btn lacks the hover state"
@@ -193,6 +256,59 @@ def test_buttons_min_height_and_all_states():
     assert re.search(
         r"\.btn-primary\s*\{[^}]*var\(--gradient-primary\)", css, re.DOTALL
     ), ".btn-primary does not use the gradient variable"
+
+
+def test_compact_button_scale():
+    """Spec 7.6: 40px base; 44px+ only on primary CTA/FAB/Create tab."""
+    css = _css()
+    assert re.search(
+        r"\.btn-primary\s*\{[^}]*min-height:\s*44px", css, re.DOTALL
+    ), ".btn-primary (primary CTA) lacks min-height: 44px"
+    assert re.search(
+        r"\.tab-create\s*\{[^}]*min-height:\s*44px", css, re.DOTALL
+    ), ".tab-create lacks min-height: 44px"
+    tall_hits: set[str] = set()
+    for origin, source in _style_sources():
+        for selector, body in _rule_blocks(source):
+            if not BUTTON_LIKE_RE.search(selector):
+                continue
+            for raw in re.findall(r"min-height\s*:\s*(\d+)px", body):
+                value = int(raw)
+                assert value >= 24, (
+                    f"{origin} {selector.strip()!r} drops below "
+                    f"the 24px target floor: {value}px"
+                )
+                if value >= 44:
+                    assert APPROVED_TALL_RE.search(selector), (
+                        f"{origin} {selector.strip()!r} carries "
+                        f"min-height: {value}px outside the primary "
+                        "CTA / FAB / Create-tab selectors"
+                    )
+                    tall_hits.add(selector.strip())
+    assert any(".btn-primary" in hit for hit in tall_hits)
+    assert any(".tab-create" in hit for hit in tall_hits)
+    assert any("#map_create" in hit for hit in tall_hits)
+    assert any(".feed-fab" in hit for hit in tall_hits)
+
+
+def test_gradient_reserved_for_primary_cta_and_create_tab():
+    """Spec 7.6: no gradient outside primary CTA / Create tab."""
+    hits: list[str] = []
+    for origin, source in _style_sources():
+        for selector, body in _rule_blocks(source):
+            if "gradient" not in body.lower():
+                continue
+            assert APPROVED_GRADIENT_RE.search(selector), (
+                f"{origin} {selector.strip()!r} uses a gradient "
+                "outside the primary CTA / Create tab"
+            )
+            hits.append(selector.strip())
+    assert any(".btn-primary" in hit for hit in hits), (
+        "primary CTA lost its gradient"
+    )
+    assert any(".tab-create" in hit for hit in hits), (
+        "Create tab lost its gradient"
+    )
 
 
 def test_layout_shell_structure():

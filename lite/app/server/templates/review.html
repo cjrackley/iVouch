@@ -4,14 +4,14 @@
 <p>Reviewer-only queue of accepted demo reports. Results need human
 review and are not evidence of authenticity.</p>
 {% if reports %}
-<ul>
+<ul class="review-queue">
 {% for item in reports %}
-<li><a href="/review/{{ item.report_id }}">Report {{ item.report_id }}</a>
-({{ item.verdict }}, confidence {{ item.confidence }}){% if item.needs_review %} — needs human review{% endif %}</li>
+<li class="card"><a href="/review/{{ item.report_id }}">Report {{ item.report_id }}</a>
+({{ item.verdict }}, confidence {{ item.confidence_pct }}){% if item.needs_review %} — needs human review{% endif %}</li>
 {% endfor %}
 </ul>
 {% else %}
-<p>No reports yet.</p>
+<p class="empty-state">No reports yet.</p>
 <a class="btn btn-primary" href="/map">Explore Map</a>
 {% endif %}
 {% endblock %}

@@ -9,7 +9,7 @@
   height: 80px;
   min-height: 80px;
   border-radius: 50%;
-  background: var(--gradient-primary);
+  background: var(--color-primary);
   color: var(--color-card);
   display: inline-flex;
   align-items: center;
@@ -103,7 +103,7 @@
 {% endfor %}
 </ul>
 {% else %}
-<p>No saved vouches yet</p>
+<p class="empty-state">No saved vouches yet</p>
 {% endif %}
 <a class="btn btn-secondary" href="/saved">Open Saved Places</a>
 {% else %}
@@ -119,7 +119,7 @@
 {% endfor %}
 </ul>
 {% else %}
-<p>No pins yet. Share your first vouch from the map.</p>
+<p class="empty-state">No pins yet. Share your first vouch from the map.</p>
 <a class="btn btn-primary" href="/upload">Add a vouch</a>
 {% endif %}
 <a class="btn btn-secondary" href="/reports">Open My Pins</a>
@@ -134,8 +134,8 @@
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <button type="submit" class="btn btn-secondary">Send a new verification email</button>
 </form>
-{% endif %}
 <p><a href="/verify">Enter your verification code</a></p>
+{% endif %}
 <p><a class="btn btn-tertiary" href="/logout">Log out</a></p>
 {% if is_reviewer %}
 <p><a class="btn btn-secondary" href="/review">Admin</a></p>

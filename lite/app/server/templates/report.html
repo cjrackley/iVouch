@@ -6,8 +6,9 @@
 }
 .detail-hero-img {
   width: 100%;
-  height: 240px;
-  object-fit: cover;
+  height: auto;
+  max-height: 320px;
+  object-fit: contain;
   border-radius: var(--radius-card);
   display: block;
 }
@@ -64,7 +65,7 @@
   position: sticky;
   bottom: 0;
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap; gap: 8px;
   align-items: center;
   padding: 12px 0;
   background: var(--color-bg);
@@ -99,7 +100,7 @@
 {% endif %}
 <dl>
 <dt>Incident type</dt>
-<dd>{{ top_incident }} (probability {{ top_incident_prob }})</dd>
+<dd>{{ top_incident }} (probability {{ top_incident_pct }})</dd>
 {% if category %}
 <dt>Category</dt>
 <dd>{{ category_label }}</dd>
@@ -109,7 +110,7 @@
 <dt>Assessment</dt>
 <dd>{{ report.verdict }}</dd>
 <dt>Confidence</dt>
-<dd>{{ report.confidence }}</dd>
+<dd>{{ confidence_pct }}</dd>
 <dt>Approximate map location</dt>
 <dd>{{ report.display_lat }}, {{ report.display_lng }}</dd>
 {% if report.claim_text %}
@@ -123,14 +124,14 @@
 <p class="notice">Visible to logged-in demo users. Your email and exact location are never shared.</p>
 <h2>Incident probabilities</h2>
 <ul>
-{% for name, prob in report.incident_probs.items() %}
-<li>{{ name }}: {{ prob }}</li>
+{% for name, pct in incident_pct.items() %}
+<li>{{ name }}: {{ pct }}</li>
 {% endfor %}
 </ul>
 <h2>Severity probabilities</h2>
 <ul>
-{% for name, prob in report.severity_probs.items() %}
-<li>{{ name }}: {{ prob }}</li>
+{% for name, pct in severity_pct.items() %}
+<li>{{ name }}: {{ pct }}</li>
 {% endfor %}
 </ul>
 <h2>Signals observed</h2>
@@ -149,7 +150,7 @@
 {% endfor %}
 </ul>
 {% else %}
-<p>No vouches yet.</p>
+<p class="empty-state">No vouches yet.</p>
 {% endif %}
 <h2>Comments</h2>
 {% set comment_items = comments|default([]) %}
@@ -160,7 +161,7 @@
 {% endfor %}
 </ul>
 {% else %}
-<p>No comments yet.</p>
+<p class="empty-state">No comments yet.</p>
 {% endif %}
 <form id="comment_form" method="post" action="/comments">
 <input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}">
@@ -193,7 +194,7 @@
 <button type="submit" class="btn btn-secondary">Save</button>
 </form>
 {% endif %}
-<a id="share_link" class="btn btn-secondary" href="/shared/{{ report.report_id }}">/shared/{{ report.report_id }}</a>
+<a id="share_link" class="btn btn-secondary" href="/shared/{{ report.report_id }}">Share</a>
 </div>
 {% if is_owner|default(false) %}
 <h2>Owner controls</h2>

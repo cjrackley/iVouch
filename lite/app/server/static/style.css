@@ -111,12 +111,12 @@ h4 {
   border: 1px solid var(--color-border);
 }
 
-/* Buttons: every button meets the 44px touch target. */
+/* Buttons: compact 40px base (spec 7.6); primary CTA keeps 44px+. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 20px;
   border-radius: var(--radius-button);
   font-family: var(--font-stack);
@@ -153,6 +153,7 @@ h4 {
   background: var(--gradient-primary);
   color: var(--color-card);
   box-shadow: var(--shadow-fab);
+  min-height: 44px;
 }
 
 .btn-secondary {
@@ -162,8 +163,8 @@ h4 {
 }
 
 .btn-tertiary {
-  background: transparent;
-  border: none;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
   color: var(--color-primary);
 }
 
@@ -193,7 +194,7 @@ h4 {
 /* Native button elements get the base treatment too. */
 button {
   font-family: var(--font-stack);
-  min-height: 44px;
+  min-height: 40px;
   border-radius: var(--radius-button);
   font-weight: 600;
   transition: all 0.15s ease;
@@ -230,14 +231,17 @@ button[disabled] {
 
 .tab-item {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-height: 44px;
+  min-height: 40px;
   font-size: 10px;
   font-weight: 600;
+  white-space: nowrap;
+  text-align: center;
   color: var(--color-text-secondary);
   text-decoration: none;
   border-radius: var(--radius-button);
@@ -264,7 +268,11 @@ button[disabled] {
   background: var(--gradient-primary);
   color: var(--color-card);
   box-shadow: var(--shadow-fab);
+  border: none;
   margin: 8px 4px;
+  min-height: 44px;
+  align-self: center;
+  box-sizing: border-box;
 }
 
 /* Sidebar: hidden on mobile, replaces the tab bar on desktop. */
@@ -357,7 +365,39 @@ dt {
 }
 
 dd {
+  margin: 0 0 8px 0;
   color: var(--color-text-secondary);
+}
+
+/* Small-screen-first (spec 7.6): the shell never scrolls sideways at
+   360px; media scales down instead of overflowing. */
+.phone-shell {
+  overflow-x: clip;
+}
+
+img {
+  max-width: 100%;
+}
+
+/* Card lists share one gutter rhythm (feed, saved, pins, review, detail). */
+.feed-list,
+.saved-list,
+.pins-list,
+.review-queue,
+#vouch_list,
+#comment_list {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Empty states share one quiet rhythm. */
+.empty-state {
+  color: var(--color-text-secondary);
+  margin: 8px 0 16px 0;
 }
 
 /* Desktop: tab bar collapses to a sidebar next to the content. */
@@ -386,8 +426,14 @@ dd {
     flex-direction: row;
     justify-content: flex-start;
     padding: 0 16px;
-    min-height: 44px;
+    min-height: 40px;
     font-size: 14px;
+  }
+
+  .sidebar .tab-create {
+    margin: 4px 0;
+    align-self: stretch;
+    min-height: 44px;
   }
 
   .tab-bar {

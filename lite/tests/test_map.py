@@ -419,6 +419,91 @@ def test_incidents_payload_drives_dots_excludes_rejected_deleted(
     assert f'href="/shared/{gone_id}"' not in page.text
 
 
+def _map_body_with_pin(monkeypatch, tmp_path):
+    """Seed one accepted report; return the served ``/map`` HTML."""
+    from fastapi.testclient import TestClient
+
+    app, dirs = _make_app(monkeypatch, tmp_path)
+    http = TestClient(app)
+    _, _, accepted_id = _seed_accepted_plus_rejected(http, dirs)
+    viewer = TestClient(app)
+    _cookie_login(viewer, dirs, OTHER_EMAIL)
+    page = viewer.get("/map", headers=HTML)
+    assert page.status_code == 200, page.text
+    return page.text, accepted_id
+
+
+def _no_library_branch(body: str) -> str:
+    """Return the ``typeof maplibregl`` guard branch (up to ``return;``)."""
+    guard = re.search(r"typeof maplibregl[\s\S]*?return;", body)
+    assert guard, "map has no MapLibre-absent guard"
+    return guard.group(0)
+
+
+def test_no_cdn_controls_disabled_and_fallback_list_renders(
+    monkeypatch, tmp_path
+):
+    """7.3: without MapLibre, controls degrade and the list still shows."""
+    body, accepted_id = _map_body_with_pin(monkeypatch, tmp_path)
+
+    # The server-rendered fallback list is always in the markup.
+    assert 'id="map_fallback"' in body
+    assert f'href="/shared/{accepted_id}"' in body
+
+    # The no-library branch disables every map-dependent control and
+    # shows the fallback instead of leaving dead buttons behind.
+    branch = _no_library_branch(body)
+    assert "showFallback" in branch
+    assert "Disabled" in branch, "guard never disables the controls"
+    assert "aria-disabled" in body
+
+
+def test_basemap_toggle_label_matches_configured_style(
+    monkeypatch, tmp_path
+):
+    """7.3: honest toggle -- no fake ``Satellite`` for a vector style."""
+    body, _ = _map_body_with_pin(monkeypatch, tmp_path)
+
+    assert ">Satellite<" not in body
+    assert "styles/bright" in body
+    assert re.search(
+        r'id="basemap_satellite"[^>]*>\s*Bright\s*<', body
+    ), "second toggle label does not match the bright vector style"
+    assert 'id="basemap_street"' in body
+    assert "setStyle" in body
+
+
+def test_fab_clears_notices_on_narrow_screens(monkeypatch, tmp_path):
+    """7.3: the Create FAB cannot overlay the demo notices at 360px."""
+    body, _ = _map_body_with_pin(monkeypatch, tmp_path)
+
+    assert 'id="map_create"' in body
+    assert 'href="/upload"' in body
+    assert re.search(
+        r"@media[^{]*max-width[^{]*\{[\s\S]*?"
+        r"#map_create[\s\S]*?position:\s*static",
+        body,
+    ), "map has no narrow-screen rule docking the FAB in flow"
+
+
+def test_recenter_denied_location_never_breaks(monkeypatch, tmp_path):
+    """7.3: denied geolocation falls back; the no-CDN path stays inert."""
+    body, _ = _map_body_with_pin(monkeypatch, tmp_path)
+
+    # Live path: defined once, called for missing geolocation AND for
+    # the denied/error callback (spec-5 behavior, kept).
+    assert body.count("goHome") >= 3
+    assert "getCurrentPosition" in body
+    assert "{ timeout: 8000 }" in body
+
+    # No-CDN branch: inert -- no map calls that could throw.
+    branch = _no_library_branch(body)
+    for token in ("easeTo", "zoomIn", "zoomOut", "setStyle"):
+        assert token not in branch, (
+            f"no-CDN branch touches the map via {token!r}"
+        )
+
+
 def test_map_popup_photo_visible_to_other_user(monkeypatch, tmp_path):
     """5.4: another logged-in user sees popup photo bytes (cookie)."""
     from fastapi.testclient import TestClient

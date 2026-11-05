@@ -189,9 +189,38 @@ def _render(
     context: dict,
     status: int = 200,
     csrf_new: str | None = None,
+    request: Request | None = None,
+    active_tab: str | None = None,
 ):
-    """Render a template to an HTML response (sets CSRF cookie if new)."""
-    body = _env.get_template(name).render(context)
+    """Render a template to an HTML response (sets CSRF cookie if new).
+
+    The shell template is session-aware: ``request`` supplies the
+    header state (``logged_in``/``is_reviewer``) and ``active_tab``
+    marks the current tab ``is-active`` in both the mobile tab bar
+    and the desktop sidebar. Explicit context values always win.
+    """
+    shell_context = dict(context)
+    shell_context.setdefault("active_tab", active_tab)
+    if (
+        "logged_in" not in shell_context
+        or "is_reviewer" not in shell_context
+    ):
+        session_account = (
+            _account_for_session(request)
+            if request is not None
+            else None
+        )
+        shell_context.setdefault(
+            "logged_in", session_account is not None
+        )
+        shell_context.setdefault(
+            "is_reviewer",
+            bool(
+                session_account is not None
+                and session_account.get("reviewer")
+            ),
+        )
+    body = _env.get_template(name).render(shell_context)
     response = HTMLResponse(body, status_code=status)
     if csrf_new is not None:
         response.set_cookie(
@@ -212,7 +241,7 @@ def _wants_html(request: Request) -> bool:
     )
 
 
-def _csrf_denied() -> Response:
+def _csrf_denied(request: Request | None = None) -> Response:
     return _render(
         "message.html",
         {
@@ -224,6 +253,7 @@ def _csrf_denied() -> Response:
             "back_label": "Home",
         },
         status=403,
+        request=request,
     )
 
 
@@ -254,6 +284,7 @@ def signup_form(request: Request):
             "info": None,
         },
         csrf_new=token if is_new else None,
+        request=request,
     )
 
 
@@ -262,7 +293,7 @@ async def signup_submit(request: Request):
     """Submit signup through the spec-2 register handler (generic reply)."""
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     email = str(form.get("email", "") or "")
     password = str(form.get("password", "") or "")
     dob_raw = str(form.get("date_of_birth", "") or "").strip()
@@ -280,6 +311,7 @@ async def signup_submit(request: Request):
             },
             status=400,
             csrf_new=token if is_new else None,
+            request=request,
         )
 
     try:
@@ -306,6 +338,7 @@ async def signup_submit(request: Request):
             "info": result["message"],
         },
         csrf_new=token if is_new else None,
+        request=request,
     )
 
 
@@ -323,6 +356,7 @@ def login_form(request: Request):
             "error": None,
         },
         csrf_new=token if is_new else None,
+        request=request,
     )
 
 
@@ -331,7 +365,7 @@ async def login_submit(request: Request):
     """Log in via spec-2 and set the HttpOnly session cookie."""
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
 
     def _fail(message: str, status: int):
         token, is_new = _csrf_issue(request)
@@ -344,6 +378,7 @@ async def login_submit(request: Request):
             },
             status=status,
             csrf_new=token if is_new else None,
+            request=request,
         )
 
     from lite.app.server import api as api_module
@@ -424,6 +459,8 @@ def account_page(request: Request):
             "saved_total": len(saved),
         },
         csrf_new=token if is_new else None,
+        request=request,
+        active_tab="account",
     )
 
 
@@ -472,7 +509,7 @@ async def account_delete(request: Request):
     """Delete the caller's account after a single confirm, then login."""
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
@@ -490,6 +527,8 @@ async def account_delete(request: Request):
             },
             status=400,
             csrf_new=token if is_new else None,
+            request=request,
+            active_tab="account",
         )
 
     if form.get("confirm") != "yes":
@@ -543,6 +582,7 @@ def verify_landing(request: Request):
             "email": email_param or "",
         },
         csrf_new=csrf if is_new else None,
+        request=request,
     )
 
 
@@ -551,7 +591,7 @@ async def verify_resend(request: Request):
     """Send a fresh verification mail to the logged-in account."""
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
@@ -574,6 +614,7 @@ async def verify_resend(request: Request):
             "back": "/account",
             "back_label": "Back to your account",
         },
+        request=request,
     )
 
 
@@ -602,6 +643,8 @@ def _upload_page(request: Request, account, error=None, status: int = 200):
         },
         status=status,
         csrf_new=token if is_new else None,
+        request=request,
+        active_tab="upload",
     )
 
 
@@ -613,7 +656,11 @@ def _parse_float(value):
         return None
 
 
-def _not_found(back: str = "/", back_label: str = "Home"):
+def _not_found(
+    request: Request | None = None,
+    back: str = "/",
+    back_label: str = "Home",
+):
     """Render the generic 404 page."""
     return _render(
         "message.html",
@@ -625,6 +672,7 @@ def _not_found(back: str = "/", back_label: str = "Home"):
             "back_label": back_label,
         },
         status=404,
+        request=request,
     )
 
 
@@ -637,6 +685,26 @@ def _top_incident(body: dict):
     incident = dict(body["incident_probs"])
     name = max(incident, key=incident.get)
     return name, incident[name]
+
+
+def _pct(value: object) -> str:
+    """One-decimal percent string for a 0-1 probability (display only).
+
+    Spec 7.1: page context carries display strings; templates render
+    them and do no arithmetic. Raw floats stay in the API payloads
+    untouched, so JSON retrieval bodies are byte-identical.
+    """
+    try:
+        return f"{float(value) * 100:.1f}%"
+    except (TypeError, ValueError):
+        return "0.0%"
+
+
+def _pct_map(probs: object) -> dict:
+    """Per-label one-decimal percent strings for a probability mapping."""
+    if not isinstance(probs, dict):
+        return {}
+    return {name: _pct(val) for name, val in probs.items()}
 
 
 @pages_router.post("/upload")
@@ -654,7 +722,7 @@ async def upload_submit(request: Request):
     """
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
@@ -720,6 +788,7 @@ async def upload_submit(request: Request):
                 "back_label": "Back to upload",
             },
             status=exc.status_code,
+            request=request,
         )
     if "report_id" in body:
         return _redirect(f"/reports/{body['report_id']}")
@@ -730,6 +799,7 @@ async def upload_submit(request: Request):
             "message": body.get("detail") or MOCK_REJECTION_DETAIL,
             "demo_notice": body.get("demo_notice"),
         },
+        request=request,
     )
 
 
@@ -757,6 +827,7 @@ def reports_list(request: Request):
             "title": "Your reports",
             "reports": list(reversed(items)),
         },
+        request=request,
     )
 
 
@@ -784,13 +855,14 @@ def report_detail(request: Request, report_id: int):
     except HTTPException as exc:
         if exc.status_code == 404:
             return _not_found(
+                request,
                 back="/reports", back_label="Back to your reports"
             )
         raise
     context, csrf_new = _detail_context(
         request, account, body, report_id, owner_view=True
     )
-    return _render("report.html", context, csrf_new=csrf_new)
+    return _render("report.html", context, csrf_new=csrf_new, request=request,)
 
 
 @pages_router.get("/shared/{report_id}")
@@ -815,12 +887,12 @@ def shared_detail(request: Request, report_id: int):
         body = api_module.get_shared_report(report_id, request, account)
     except HTTPException as exc:
         if exc.status_code == 404:
-            return _not_found()
+            return _not_found(request)
         raise
     context, csrf_new = _detail_context(
         request, account, body, report_id, owner_view=False
     )
-    return _render("shared.html", context, csrf_new=csrf_new)
+    return _render("shared.html", context, csrf_new=csrf_new, request=request,)
 
 
 COMMENT_BODY_MAX = 500
@@ -879,7 +951,7 @@ def _owned_report_or_raise(
         return api_module.get_report(report_id, request, account)
 
 
-def _owner_denied() -> Response:
+def _owner_denied(request: Request | None = None) -> Response:
     """Render the owner-only 403 page (never a login redirect)."""
     return _render(
         "message.html",
@@ -891,6 +963,7 @@ def _owner_denied() -> Response:
             "back_label": "Home",
         },
         status=403,
+        request=request,
     )
 
 
@@ -962,6 +1035,10 @@ def _detail_context(
         "report": body,
         "top_incident": name,
         "top_incident_prob": prob,
+        "top_incident_pct": _pct(prob),
+        "confidence_pct": _pct(body.get("confidence")),
+        "incident_pct": _pct_map(body.get("incident_probs")),
+        "severity_pct": _pct_map(body.get("severity_probs")),
         "category": stored_category,
         "category_label": category_label,
         "correction": correction,
@@ -990,7 +1067,7 @@ def _render_detail_error(
         request, account, body, report_id, owner_view=False, error=message
     )
     return _render("shared.html", context, status=status,
-                   csrf_new=csrf_new)
+                   csrf_new=csrf_new, request=request,)
 
 
 def _render_owner_error(
@@ -1006,7 +1083,7 @@ def _render_owner_error(
         request, account, body, report_id, owner_view=True, error=message
     )
     return _render("report.html", context, status=status,
-                   csrf_new=csrf_new)
+                   csrf_new=csrf_new, request=request,)
 
 
 def _delete_report_everywhere(
@@ -1072,18 +1149,18 @@ async def vouch_add(request: Request):
         }
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
     report_id = _saved_report_id(form.get("report_id"))
     if report_id is None:
-        return _not_found(back="/map", back_label="Back to map")
+        return _not_found(request, back="/map", back_label="Back to map")
     try:
         _accepted_or_404(request, account, report_id)
     except HTTPException as exc:
         if exc.status_code == 404:
-            return _not_found(back="/map", back_label="Back to map")
+            return _not_found(request, back="/map", back_label="Back to map")
         raise
     with _page_connection(request) as conn:
         db_module.vouch_report(
@@ -1120,7 +1197,7 @@ async def vouch_remove(request: Request, report_id: int):
         }
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
@@ -1128,7 +1205,7 @@ async def vouch_remove(request: Request, report_id: int):
         _accepted_or_404(request, account, report_id)
     except HTTPException as exc:
         if exc.status_code == 404:
-            return _not_found(back="/map", back_label="Back to map")
+            return _not_found(request, back="/map", back_label="Back to map")
         raise
     with _page_connection(request) as conn:
         db_module.unvouch_report(
@@ -1191,18 +1268,18 @@ async def comment_add(request: Request):
         return {"ok": True, "report_id": report_id, "comment": stored}
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
     report_id = _saved_report_id(form.get("report_id"))
     if report_id is None:
-        return _not_found(back="/map", back_label="Back to map")
+        return _not_found(request, back="/map", back_label="Back to map")
     try:
         _accepted_or_404(request, account, report_id)
     except HTTPException as exc:
         if exc.status_code == 404:
-            return _not_found(back="/map", back_label="Back to map")
+            return _not_found(request, back="/map", back_label="Back to map")
         raise
     error = _check(
         form.get("body") if isinstance(form.get("body"), str) else None
@@ -1286,7 +1363,7 @@ async def report_edit_submit(request: Request, report_id: int):
         }
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
@@ -1294,9 +1371,10 @@ async def report_edit_submit(request: Request, report_id: int):
         body = _owned_report_or_raise(request, account, report_id)
     except HTTPException as exc:
         if exc.status_code == 403:
-            return _owner_denied()
+            return _owner_denied(request)
         if exc.status_code == 404:
             return _not_found(
+                request,
                 back="/reports", back_label="Back to your reports"
             )
         raise
@@ -1348,7 +1426,7 @@ async def report_delete_submit(request: Request, report_id: int):
         return {"ok": True, "report_id": report_id}
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
@@ -1356,9 +1434,10 @@ async def report_delete_submit(request: Request, report_id: int):
         body = _owned_report_or_raise(request, account, report_id)
     except HTTPException as exc:
         if exc.status_code == 403:
-            return _owner_denied()
+            return _owner_denied(request)
         if exc.status_code == 404:
             return _not_found(
+                request,
                 back="/reports", back_label="Back to your reports"
             )
         raise
@@ -1395,14 +1474,14 @@ def shared_photo(request: Request, report_id: int):
     """
     account = _account_for_session(request)
     if account is None:
-        return _not_found()
+        return _not_found(request)
     from lite.app.server import api as api_module
 
     try:
         return api_module.get_photo(report_id, request, account)
     except HTTPException as exc:
         if exc.status_code == 404:
-            return _not_found()
+            return _not_found(request)
         raise
 
 
@@ -1523,6 +1602,8 @@ def map_page(request: Request):
             "saved_ids": saved_ids,
         },
         csrf_new=token if is_new else None,
+        request=request,
+        active_tab="map",
     )
 
 
@@ -1643,6 +1724,8 @@ def saved_list(request: Request):
             "removed": notice == "removed",
         },
         csrf_new=token if is_new else None,
+        request=request,
+        active_tab="saved",
     )
 
 
@@ -1673,13 +1756,14 @@ async def saved_add(request: Request):
         return {"ok": True, "saved": True, "report_id": saved_id}
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
     report_id = _saved_report_id(form.get("report_id"))
     if report_id is None:
         return _not_found(
+            request,
             back="/saved", back_label="Back to saved places"
         )
     try:
@@ -1687,6 +1771,7 @@ async def saved_add(request: Request):
     except HTTPException as exc:
         if exc.status_code == 404:
             return _not_found(
+                request,
                 back="/saved", back_label="Back to saved places"
             )
         raise
@@ -1709,7 +1794,7 @@ async def saved_remove(request: Request, report_id: int):
         return {"ok": True, "saved": False, "report_id": saved_id}
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _account_for_session(request)
     if account is None:
         return _redirect("/login")
@@ -1862,10 +1947,12 @@ def feed_list(request: Request):
             ),
         },
         csrf_new=token if is_new else None,
+        request=request,
+        active_tab="feed",
     )
 
 
-def _review_denied() -> Response:
+def _review_denied(request: Request | None = None) -> Response:
     """Render the reviewer-only 403 page (never a login redirect)."""
     return _render(
         "message.html",
@@ -1877,6 +1964,7 @@ def _review_denied() -> Response:
             "back_label": "Home",
         },
         status=403,
+        request=request,
     )
 
 
@@ -1904,13 +1992,13 @@ def _review_queue_items(request: Request) -> list:
         items = []
         for row in rows:
             incident = json.loads(row["incident_probs"] or "{}")
+            confidence = max(incident.values()) if incident else 0.0
             items.append(
                 {
                     "report_id": row["id"],
                     "verdict": row["verdict"],
-                    "confidence": (
-                        max(incident.values()) if incident else 0.0
-                    ),
+                    "confidence": confidence,
+                    "confidence_pct": _pct(confidence),
                     "needs_review": row["verdict"] != "likely-real",
                 }
             )
@@ -1941,6 +2029,7 @@ def _render_review_detail(
     except HTTPException as exc:
         if exc.status_code == 404:
             return _not_found(
+                request,
                 back="/review", back_label="Back to the review queue"
             )
         raise
@@ -1983,6 +2072,9 @@ def _render_review_detail(
         {
             "title": f"Review report {body['report_id']}",
             "report": body,
+            "confidence_pct": _pct(body.get("confidence")),
+            "incident_pct": _pct_map(body.get("incident_probs")),
+            "severity_pct": _pct_map(body.get("severity_probs")),
             "needs_review": body["verdict"] != "likely-real",
             "provenance": provenance,
             "duplicates": duplicates,
@@ -1994,6 +2086,7 @@ def _render_review_detail(
         },
         status=status,
         csrf_new=token if is_new else None,
+        request=request,
     )
 
 
@@ -2001,13 +2094,14 @@ def _render_review_detail(
 def review_queue(request: Request):
     """Reviewer queue: needs-review first, then newest (403 otherwise)."""
     if _reviewer_session(request) is None:
-        return _review_denied()
+        return _review_denied(request)
     return _render(
         "review.html",
         {
             "title": "Review queue",
             "reports": _review_queue_items(request),
         },
+        request=request,
     )
 
 
@@ -2016,7 +2110,7 @@ def review_detail_page(request: Request, report_id: int):
     """Reviewer detail: stored check outputs plus action forms."""
     account = _reviewer_session(request)
     if account is None:
-        return _review_denied()
+        return _review_denied(request)
     return _render_review_detail(request, report_id, account)
 
 
@@ -2051,10 +2145,10 @@ async def review_action_submit(request: Request, report_id: int):
         )
     form = await request.form()
     if not _csrf_valid(request, form.get(CSRF_FIELD)):
-        return _csrf_denied()
+        return _csrf_denied(request)
     account = _reviewer_session(request)
     if account is None:
-        return _review_denied()
+        return _review_denied(request)
 
     def _text(name: str):
         value = form.get(name)
@@ -2081,6 +2175,7 @@ async def review_action_submit(request: Request, report_id: int):
     except HTTPException as exc:
         if exc.status_code == 404:
             return _not_found(
+                request,
                 back="/review", back_label="Back to the review queue"
             )
         if exc.status_code == 422:
@@ -2110,8 +2205,9 @@ def _audit_events(request: Request) -> list:
 def audit_list(request: Request):
     """Reviewer-only audit listing (403 otherwise, never a redirect)."""
     if _reviewer_session(request) is None:
-        return _review_denied()
+        return _review_denied(request)
     return _render(
         "audit.html",
         {"title": "Audit events", "events": _audit_events(request)},
+        request=request,
     )

@@ -30,6 +30,14 @@
   position: absolute;
   right: var(--safe-area-x);
   bottom: var(--safe-area-x);
+  min-height: 44px;
+}
+@media (max-width: 480px) {
+  #map_create {
+    position: static;
+    display: inline-flex;
+    margin-top: 12px;
+  }
 }
 #map_sheet {
   position: absolute;
@@ -60,6 +68,8 @@
 #sheet_photo {
   width: 100%;
   height: auto;
+  max-height: 220px;
+  object-fit: contain;
   border-radius: var(--radius-card);
 }
 .map-pill {
@@ -68,7 +78,7 @@
   justify-content: center;
   gap: 6px;
   min-width: 44px;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 12px;
   border-radius: var(--radius-pill);
   border: none;
@@ -124,7 +134,7 @@
 </div>
 <div id="basemap_toggle">
 <button type="button" id="basemap_street">Street</button>
-<button type="button" id="basemap_satellite">Satellite</button>
+<button type="button" id="basemap_satellite" title="Bright vector style">Bright</button>
 </div>
 <div id="map_fallback" hidden>
 <p>The map could not be loaded. Reports list:</p>
@@ -153,7 +163,10 @@
 (function () {
   var INCIDENTS_URL = "/api/incidents";
   var STREET_STYLE = "https://tiles.openfreemap.org/styles/liberty";
-  var SATELLITE_STYLE = "https://tiles.openfreemap.org/styles/bright";
+  // Second vector style ("Bright"). No keyless satellite-imagery
+  // endpoint was verifiable, so the toggle is labeled Bright rather
+  // than showing a fake "Satellite" option (spec 7.3).
+  var BRIGHT_STYLE = "https://tiles.openfreemap.org/styles/bright";
   var COMPARE_LINE = "Compare the photo with this area visually. Lite does not automatically verify that a photo matches its location.";
   var DEFAULT_CENTER = [0, 20];
   var DEFAULT_ZOOM = 1;
@@ -207,6 +220,28 @@
   function hideFallback() {
     if (fallbackEl !== null) {
       fallbackEl.setAttribute("hidden", "");
+    }
+  }
+  function setControlsDisabled(disabled) {
+    var buttons = [
+      streetButton,
+      satelliteButton,
+      recenterButton,
+      zoomInButton,
+      zoomOutButton
+    ];
+    for (var i = 0; i < buttons.length; i++) {
+      var btn = buttons[i];
+      if (btn === null || typeof btn === "undefined") {
+        continue;
+      }
+      if (disabled) {
+        btn.setAttribute("disabled", "");
+        btn.setAttribute("aria-disabled", "true");
+      } else {
+        btn.removeAttribute("disabled");
+        btn.removeAttribute("aria-disabled");
+      }
     }
   }
   function escapeHtml(value) {
@@ -318,6 +353,12 @@
     });
   }
   if (typeof maplibregl === "undefined" || mapEl === null) {
+    // No map library: mark every map-dependent control disabled so
+    // nothing looks tappable that cannot act, keep the
+    // server-rendered report list visible, and never touch the map
+    // object. The disabled Recenter button cannot throw on denied
+    // location, extending the spec-5 safe-recenter behavior here.
+    setControlsDisabled(true);
     showFallback();
     return;
   }
@@ -331,7 +372,7 @@
     map.setStyle(STREET_STYLE);
   });
   satelliteButton.addEventListener("click", function () {
-    map.setStyle(SATELLITE_STYLE);
+    map.setStyle(BRIGHT_STYLE);
   });
   recenterButton.addEventListener("click", function () {
     function goHome() {

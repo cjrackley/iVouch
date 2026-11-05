@@ -10,29 +10,33 @@
 <div class="phone-shell">
 <header class="top-bar">
 <span class="top-bar-title">iVouch Lite</span>
+{% if logged_in %}
+{% if is_reviewer %}<a class="btn btn-secondary" href="/review">Admin</a>{% endif %}
+<a class="btn btn-tertiary top-bar-gear" href="/account" aria-label="Account settings">&#9881;</a>
+<a class="btn btn-tertiary" href="/logout">Log out</a>
+{% else %}
 <a class="btn btn-secondary" href="/login">Log in</a>
 <a class="btn btn-primary" href="/signup">Sign up</a>
-<a class="btn btn-tertiary" href="/logout">Log out</a>
-<a class="btn btn-tertiary top-bar-gear" href="/account" aria-label="Account settings">&#9881;</a>
+{% endif %}
 </header>
 <div class="shell-body">
 <nav class="sidebar" aria-label="Primary">
-<a class="tab-item" href="/feed">Feed</a>
-<a class="tab-item" href="/map">Map</a>
-<a class="tab-item tab-create" href="/upload">Create +</a>
-<a class="tab-item" href="/saved">Saved</a>
-<a class="tab-item" href="/account">Profile</a>
+<a class="tab-item{% if active_tab == 'feed' %} is-active{% endif %}" href="/feed">Feed</a>
+<a class="tab-item{% if active_tab == 'map' %} is-active{% endif %}" href="/map">Map</a>
+<a class="tab-item tab-create{% if active_tab == 'upload' %} is-active{% endif %}" href="/upload">Create +</a>
+<a class="tab-item{% if active_tab == 'saved' %} is-active{% endif %}" href="/saved">Saved</a>
+<a class="tab-item{% if active_tab == 'account' %} is-active{% endif %}" href="/account">Profile</a>
 </nav>
 <main class="safe-area">
 {% block content %}{% endblock %}
 </main>
 </div>
 <nav class="tab-bar" aria-label="Primary">
-<a class="tab-item" href="/feed">Feed</a>
-<a class="tab-item" href="/map">Map</a>
-<a class="tab-item tab-create" href="/upload">Create +</a>
-<a class="tab-item" href="/saved">Saved</a>
-<a class="tab-item" href="/account">Profile</a>
+<a class="tab-item{% if active_tab == 'feed' %} is-active{% endif %}" href="/feed">Feed</a>
+<a class="tab-item{% if active_tab == 'map' %} is-active{% endif %}" href="/map">Map</a>
+<a class="tab-item tab-create{% if active_tab == 'upload' %} is-active{% endif %}" href="/upload">Create +</a>
+<a class="tab-item{% if active_tab == 'saved' %} is-active{% endif %}" href="/saved">Saved</a>
+<a class="tab-item{% if active_tab == 'account' %} is-active{% endif %}" href="/account">Profile</a>
 </nav>
 <footer class="shell-footer">
 <p>iVouch Lite demo build.</p>

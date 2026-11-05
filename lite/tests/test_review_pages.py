@@ -269,7 +269,8 @@ def test_queue_order_needs_review_first_then_newest(
     ).json()
     assert f"/review/{third}" in body
     assert expected["verdict"] in body
-    assert str(expected["confidence"]) in body
+    # Spec 7.1: the queue renders one-decimal percent strings, not raw floats.
+    assert f"{expected['confidence'] * 100:.1f}%" in body
     assert OWNER_EMAIL not in body
     assert REVIEWER_EMAIL not in body
 
@@ -300,10 +301,10 @@ def test_detail_contents_and_no_uploader_email(
         expected["incident_probs"], key=expected["incident_probs"].get
     )
     assert top_incident in body
-    assert str(expected["incident_probs"][top_incident]) in body
+    # Spec 7.1: detail pages render one-decimal percent strings, not raw floats.
+    assert f"{expected['incident_probs'][top_incident] * 100:.1f}%" in body
     assert expected["top_severity"] in body
-    assert str(expected["severity_probs"][
-        expected["top_severity"]]) in body
+    assert f"{expected['severity_probs'][expected['top_severity']] * 100:.1f}%" in body
     for flag in ("exif_present", "time_plausible", "gps_present"):
         assert flag in body, f"provenance flag missing: {flag}"
     assert f"/review/{twin}" in body
